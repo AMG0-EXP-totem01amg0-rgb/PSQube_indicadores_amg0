@@ -41,7 +41,8 @@ export const supabase = (supabaseUrl && supabaseKey)
 
 /**
  * Robust helper function to fetch all rows using the requested page chunk mechanism
- * of size 1000 with a range(from, to) loop.
+ * of size 1000 with a range(from, to) loop. Includes an automatic self-healing fallback
+ * for spelling variations or versions of standard tables (e.g. inventario_fisico vs inventario_fisicov2)
  */
 export async function fetchAllRows(tableName: string): Promise<any[]> {
     if (!supabase) {
@@ -49,43 +50,74 @@ export async function fetchAllRows(tableName: string): Promise<any[]> {
         return [];
     }
     
-    const allRows: any[] = [];
-    let from = 0;
-    const pageSize = 1000;
-    let hasMore = true;
-    
-    try {
-        console.log(`[Supabase] Starting paginated load for table: ${tableName}`);
-        while (hasMore) {
-            const to = from + pageSize - 1;
-            const { data, error } = await supabase
-                .from(tableName)
-                .select("*")
-                .range(from, to);
-                
-            if (error) {
-                console.error(`[Supabase] Error reading table ${tableName}:`, error.message, error);
-                throw error;
-            }
-            
-            if (data && data.length > 0) {
-                allRows.push(...data);
-                console.log(`[Supabase] Table ${tableName}: Loaded ${data.length} rows (total so far: ${allRows.length})`);
-                if (data.length < pageSize) {
-                    hasMore = false;
-                } else {
-                    from += pageSize;
+    // Determine possible fallback table name to avoid PGRST errors due to different DB schemas
+    let alternateTableName: string | null = null;
+    if (tableName === "inventario_fisico") {
+        alternateTableName = "inventario_fisicov2";
+    } else if (tableName === "inventario_fisicov2") {
+        alternateTableName = "inventario_fisico";
+    } else if (tableName === "inventario") {
+        alternateTableName = "inventariov2";
+    } else if (tableName === "inventariov2") {
+        alternateTableName = "inventario";
+    }
+
+    async function tryFetch(nameToTry: string): Promise<{ success: boolean; data?: any[]; error?: any }> {
+        const allRows: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+        
+        try {
+            while (hasMore) {
+                const to = from + pageSize - 1;
+                const { data, error } = await supabase!
+                    .from(nameToTry)
+                    .select("*")
+                    .range(from, to);
+                    
+                if (error) {
+                    return { success: false, error };
                 }
-            } else {
-                hasMore = false;
+                
+                if (data && data.length > 0) {
+                    allRows.push(...data);
+                    if (data.length < pageSize) {
+                        hasMore = false;
+                    } else {
+                        from += pageSize;
+                    }
+                } else {
+                    hasMore = false;
+                }
             }
+            return { success: true, data: allRows };
+        } catch (catchErr: any) {
+            return { success: false, error: catchErr };
         }
-        console.log(`[Supabase] Succeeded loading table ${tableName}. Total rows: ${allRows.length}`);
-    } catch (err: any) {
-        console.error(`[Supabase] Connection or reading failed on table ${tableName}:`, err);
+    }
+
+    console.log(`[Supabase] Starting paginated load for table: ${tableName}`);
+    let result = await tryFetch(tableName);
+
+    // If initial fetch failed, and we have an alternate table name, try that too
+    if (!result.success && alternateTableName) {
+        console.warn(`[Supabase] Table ${tableName} returned warning/error code ${result.error?.code || 'unknown'}. Retrying with alternate table name: ${alternateTableName}...`);
+        const altResult = await tryFetch(alternateTableName);
+        if (altResult.success) {
+            console.log(`[Supabase] Successfully loaded fallback table: ${alternateTableName}`);
+            result = altResult;
+        } else {
+            console.error(`[Supabase] Failed loading both ${tableName} and fallback ${alternateTableName}`);
+        }
+    }
+
+    if (result.success && result.data) {
+        console.log(`[Supabase] Succeeded loading table data. Total rows: ${result.data.length}`);
+        return result.data;
     }
     
-    return allRows;
+    return [];
 }
 
 /**

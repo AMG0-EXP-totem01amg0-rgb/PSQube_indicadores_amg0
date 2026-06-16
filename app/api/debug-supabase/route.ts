@@ -65,7 +65,7 @@ export async function GET() {
     reports.clientInitialized = true;
 
     // Test table list
-    const tablesToTest = ["produccionv2", "parosv2", "detalles_produccionv2", "inventario_fisico"];
+    const tablesToTest = ["produccionv2", "parosv2", "detalles_produccionv2", "inventario_fisico", "inventario_fisicov2"];
     reports.tableTests = {};
 
     for (const table of tablesToTest) {
