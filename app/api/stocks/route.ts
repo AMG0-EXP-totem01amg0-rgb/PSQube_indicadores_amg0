@@ -4,6 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 
+export const dynamic = "force-dynamic";
+
 // --- CACHÉ ---
 const CACHE_TTL = 60 * 1000;
 const cache = new Map<string, { data: any; timestamp: number }>();

@@ -181,18 +181,20 @@ export const DateFilter: React.FC<DateFilterProps> = ({ onFilterChange, defaultF
               <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fecha Inicial</label>
               <input 
                 type="date" 
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-white transition-all"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-white transition-all cursor-pointer"
                 value={customRange.start}
                 onChange={(e) => setCustomRange({...customRange, start: e.target.value})}
+                onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
               />
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fecha Final</label>
               <input 
                 type="date" 
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-white transition-all"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-white transition-all cursor-pointer"
                 value={customRange.end}
                 onChange={(e) => setCustomRange({...customRange, end: e.target.value})}
+                onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
               />
             </div>
             

@@ -239,6 +239,7 @@ export const DailyTimelineView: React.FC = () => {
                       value={selectedDay}
                       onChange={(e) => setSelectedDay(e.target.value)}
                       className="bg-transparent border-none focus:ring-0 text-xs font-black text-white px-6 py-1 [color-scheme:dark] uppercase tracking-widest cursor-pointer"
+                      onClick={(e) => { try { e.currentTarget.showPicker(); } catch (err) {} }}
                   />
               </div>
               
