@@ -1,5 +1,7 @@
 import { SignUp } from "@clerk/nextjs";
 
+export const dynamic = "force-dynamic";
+
 export default function Page() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">

@@ -28,13 +28,7 @@ if (supabaseUrl) {
     supabaseUrl = supabaseUrl.replace(/\/+$/, "");
 }
 
-if (!supabaseUrl) {
-    console.error("ERROR: SUPABASE_URL is missing in environment variables!");
-}
-if (!supabaseKey) {
-    console.error("ERROR: SUPABASE_KEY is missing in environment variables!");
-}
-
+// Initialize client silently
 export const supabase = (supabaseUrl && supabaseKey)
     ? createClient(supabaseUrl, supabaseKey)
     : null;
