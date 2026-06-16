@@ -23,6 +23,42 @@ function parseNumber(val: any): number {
     return parseFloat(str) || 0;
 }
 
+function hmsToMinutes(hms: string | null | undefined): number {
+  if (!hms) return 0;
+  if (typeof hms === "number") return hms;
+  if (typeof hms !== "string") return 0;
+  const parts = hms.split(":").map(Number);
+  if (parts.length === 3) {
+    // H:MM:SS
+    return Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
+  } else if (parts.length === 2) {
+    // MM:SS o HH:MM
+    return parts[0] * 60 + parts[1];
+  }
+  return parseFloat(hms) || 0;
+}
+
+function normalizeMachine(m: any): string {
+    if (!m) return "";
+    return String(m).trim().toUpperCase().replace(/[\s_\-\.\/]+/g, '');
+}
+
+function normalizeShift(s: any): string {
+    if (!s) return "";
+    let str = String(s).trim().toUpperCase();
+    if (str.includes("MAÑANA") || str.includes("MANANA")) return "MAÑANA";
+    if (str.includes("TARDE")) return "TARDE";
+    if (str.includes("NOCHE")) return "NOCHE";
+    return str;
+}
+
+function sameDate(d1Str: any, d2Str: any): boolean {
+    const date1 = parseSheetDate(d1Str);
+    const date2 = parseSheetDate(d2Str);
+    if (!date1 || !date2) return false;
+    return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
+}
+
 export async function GET(req: Request) {
   try {
     const { userId } = auth();
@@ -56,9 +92,10 @@ export async function GET(req: Request) {
     const endDate = endParam ? new Date(endParam + "T23:59:59") : null;
 
     // Fetch from Supabase tables
-    const [rowsCabecera, rowsLista] = await Promise.all([
+    const [rowsCabecera, rowsLista, rowsParos] = await Promise.all([
         fetchAllRows("produccionv2"),
-        fetchAllRows("detalles_produccionv2")
+        fetchAllRows("detalles_produccionv2"),
+        fetchAllRows("parosv2")
     ]);
 
     if (topParam) {
@@ -171,14 +208,32 @@ export async function GET(req: Request) {
         const tnHeader = parseNumber(getSupabaseVal(row, "tn_producidas"));
         const hsMarcha = parseNumber(getSupabaseVal(row, "hs_marcha_tis"));
         
-        let oee = parseNumber(getSupabaseVal(row, "oee"));
-        let disponibilidad = parseNumber(getSupabaseVal(row, "disponibilidad"));
         let rendimiento = parseNumber(getSupabaseVal(row, "rendimiento"));
-
-        // Normalizar valores de porcentaje a una fracción entre 0 y 1 si están por encima de 1
-        if (oee > 1.0) oee = oee / 100;
-        if (disponibilidad > 1.0) disponibilidad = disponibilidad / 100;
         if (rendimiento > 1.0) rendimiento = rendimiento / 100;
+
+        // Calculate dynamic availability based on actual downtime events (parosv2)
+        const matchedParos = rowsParos.filter(p => {
+            const pDate = getSupabaseVal(p, "FECHA");
+            const pMachine = getSupabaseVal(p, "MÁQUINA AFECTADA") || getSupabaseVal(p, "machine_id");
+            const pShift = getSupabaseVal(p, "TURNO");
+
+            return sameDate(fecha, pDate) && 
+                   normalizeMachine(maquinaId) === normalizeMachine(pMachine) && 
+                   normalizeShift(turno) === normalizeShift(pShift);
+        });
+
+        const stopMinutes = matchedParos.reduce((total, p) => {
+            const durRaw = getSupabaseVal(p, "DURACIÓN") || getSupabaseVal(p, "duration_minutes") || "0:00:00";
+            return total + hmsToMinutes(durRaw);
+        }, 0);
+
+        const scheduledMinutes = (hsMarcha > 0 ? hsMarcha : 8) * 60;
+        let calculatedDisp = scheduledMinutes > 0 ? (scheduledMinutes - stopMinutes) / scheduledMinutes : 1.0;
+        if (calculatedDisp < 0) calculatedDisp = 0;
+        if (calculatedDisp > 1) calculatedDisp = 1;
+
+        const disponibilidad = calculatedDisp;
+        const oee = disponibilidad * rendimiento;
         
         if (!machineStats[maquinaId]) machineStats[maquinaId] = { bags: 0, tn: 0, name: maquinaDesc };
 
