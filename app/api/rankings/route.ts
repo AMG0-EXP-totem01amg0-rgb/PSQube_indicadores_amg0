@@ -1,19 +1,11 @@
-
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { fetchAllRows, getSupabaseVal } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const CACHE_TTL = 60 * 1000;
+const CACHE_TTL = 30 * 1000;
 const cache = new Map<string, { data: any; timestamp: number }>();
-
-function getVal(row: any, key: string) {
-    return row.get(key) || row.get(key.toUpperCase()) || row.get(key.toLowerCase()) || 
-           row.get(key.replace(/ /g, "_").toUpperCase()) || 
-           row.get(key.replace(/ /g, "_").toLowerCase());
-}
 
 function parseNumber(val: any): number {
     if (typeof val === 'number') return val;
@@ -24,11 +16,13 @@ function parseNumber(val: any): number {
 }
 
 function hmsToMinutes(hms: string | null | undefined): number {
-  if (!hms || typeof hms !== "string") return 0;
+  if (!hms) return 0;
+  if (typeof hms === "number") return hms;
+  if (typeof hms !== "string") return 0;
   const parts = hms.split(":").map(Number);
   if (parts.length === 3) return Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
   if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return 0;
+  return parseFloat(hms) || 0;
 }
 
 function parseSheetDate(dateStr: any): Date | null {
@@ -67,7 +61,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const cacheKey = `rankings-${startParam}-${endParam}-${filterOpParam || 'all'}-${filterTypeParam || 'all'}`;
+    const cacheKey = `rankings-v2-${startParam}-${endParam}-${filterOpParam || 'all'}-${filterTypeParam || 'all'}`;
     const cachedEntry = cache.get(cacheKey);
     const now = Date.now();
     if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
@@ -81,39 +75,11 @@ export async function GET(req: Request) {
     const endDate = new Date(endParam + "T23:59:59");
     const productionFilterDate = new Date("2025-12-01T00:00:00");
 
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, "\n");
-    const sheetId = process.env.GOOGLE_SHEET_ID;
-    if (!email || !key || !sheetId) return NextResponse.json({ error: "Config missing" }, { status: 500 });
-
-    const authClient = new JWT({ email, key, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-    const doc = new GoogleSpreadsheet(sheetId, authClient);
-    await doc.loadInfo();
-
-    const sheetCabecera = doc.sheetsByTitle["PRODUCCION_CABECERA"];
-    const sheetParos = doc.sheetsByTitle["PARO DE MAQUINA"];
-    const sheetUsuarios = doc.sheetsByTitle["USUARIOS"];
-
-    if (!sheetCabecera || !sheetParos || !sheetUsuarios) {
-        return NextResponse.json({ error: "Required sheets not found" }, { status: 404 });
-    }
-
-    const [rowsCabecera, rowsParos, rowsUsuarios] = await Promise.all([
-        sheetCabecera.getRows(),
-        sheetParos.getRows(),
-        sheetUsuarios.getRows()
+    // Fetch from Supabase tables
+    const [rowsCabecera, rowsParos] = await Promise.all([
+        fetchAllRows("produccionv2"),
+        fetchAllRows("parosv2")
     ]);
-
-    // Create User Mappings
-    const usersById: Record<string, string> = {};
-    const usersByRed: Record<string, string> = {};
-    rowsUsuarios.forEach(u => {
-        const id = String(getVal(u, "IDUSUARIO") || "").trim();
-        const red = String(getVal(u, "USUARIORED") || "").trim();
-        const desc = String(getVal(u, "DESCRIPCIÓN USUARIO") || "").trim();
-        if (id) usersById[id] = desc;
-        if (red) usersByRed[red] = desc;
-    });
 
     // --- PRODUCTION RANKINGS ---
     const prodByOperator: Record<string, number> = {};
@@ -121,16 +87,16 @@ export async function GET(req: Request) {
 
     let prodRecordCount = 0;
     rowsCabecera.forEach(row => {
-        const d = parseSheetDate(getVal(row, "FECHA"));
+        const d = parseSheetDate(getSupabaseVal(row, "fecha"));
         if (!d || d < productionFilterDate) return;
         if (d < startDate || d > endDate) return;
 
         prodRecordCount++;
-        const tn = parseNumber(getVal(row, "tn_totales_turno"));
-        const maquinistaId = String(getVal(row, "maquinista") || "").trim();
-        const palletizer = String(getVal(row, "descripcion_paletizadora") || "Desconocida").trim();
+        const tn = parseNumber(getSupabaseVal(row, "tn_producidas"));
+        const maquinistaId = String(getSupabaseVal(row, "id_maquinista") || "").trim();
+        const palletizer = String(getSupabaseVal(row, "hac_paletizadora") || getSupabaseVal(row, "palletizadora") || "Desconocida").trim();
 
-        const operatorName = usersById[maquinistaId] || `ID: ${maquinistaId}`;
+        const operatorName = getSupabaseVal(row, "descripcion_maquinista") || `ID: ${maquinistaId}`;
         prodByOperator[operatorName] = (prodByOperator[operatorName] || 0) + tn;
         prodByPalletizer[palletizer] = (prodByPalletizer[palletizer] || 0) + tn;
     });
@@ -142,38 +108,33 @@ export async function GET(req: Request) {
     const parosByEquipment: Record<string, { duration: number; count: number }> = {};
     const parosByType: Record<string, { duration: number; count: number }> = {};
     
-    // Available options for UI filters (regardless of current filter selection, but within date range)
     const availableOps = new Set<string>();
     const availableTypes = new Set<string>();
 
-    // Combinations
     const combOpMach: Record<string, { duration: number; count: number }> = {};
     const combMachCause: Record<string, { duration: number; count: number }> = {};
     const combEquipCause: Record<string, { duration: number; count: number }> = {};
     const combOpEquip: Record<string, { duration: number; count: number }> = {};
 
     rowsParos.forEach(row => {
-        const d = parseSheetDate(getVal(row, "FECHA"));
+        const d = parseSheetDate(getSupabaseVal(row, "fecha"));
         if (!d || d < startDate || d > endDate) return;
 
-        const duration = hmsToMinutes(getVal(row, "DURACIÓN"));
-        const machine = String(getVal(row, "MÁQUINA AFECTADA") || "Desconocida").trim();
-        const userRed = String(getVal(row, "USUARIO") || "").trim();
-        const cause = String(getVal(row, "TEXTO DE CAUSA") || "Sin Causa").trim();
-        const equipment = String(getVal(row, "DETALLE HAC") || "Sin Detalle").trim();
-        const typeP = String(getVal(row, "TIPO PARO") || "Sin Tipo").trim();
+        const duration = hmsToMinutes(getSupabaseVal(row, "duracion") || getSupabaseVal(row, "duración") || getSupabaseVal(row, "duration_minutes"));
+        const machine = String(getSupabaseVal(row, "maquina_afectada") || getSupabaseVal(row, "máquina afectada") || "Desconocida").trim();
+        const userRed = String(getSupabaseVal(row, "usuario") || "").trim();
+        const cause = String(getSupabaseVal(row, "texto_de_causa") || getSupabaseVal(row, "texto de causa") || "Sin Causa").trim();
+        const equipment = String(getSupabaseVal(row, "detalle_hac") || getSupabaseVal(row, "detalle hac") || "Sin Detalle").trim();
+        const typeP = String(getSupabaseVal(row, "tipo_paro") || getSupabaseVal(row, "tipo paro") || "Sin Tipo").trim();
 
-        const operatorName = usersByRed[userRed] || userRed || "Desconocido";
+        const operatorName = getSupabaseVal(row, "operator_name") || getSupabaseVal(row, "operatorName") || userRed || "Desconocido";
 
-        // Track available options
         availableOps.add(operatorName);
         availableTypes.add(typeP);
 
-        // Apply filters
         if (filterOperators && !filterOperators.includes(operatorName.toLowerCase())) return;
         if (filterTypes && !filterTypes.includes(typeP.toLowerCase())) return;
 
-        // Simple aggregations
         const update = (map: any, key: string) => {
             if (!map[key]) map[key] = { duration: 0, count: 0 };
             map[key].duration += duration;
@@ -186,7 +147,6 @@ export async function GET(req: Request) {
         update(parosByEquipment, equipment);
         update(parosByType, typeP);
 
-        // Combination aggregations
         update(combOpMach, `${operatorName} @ ${machine}`);
         update(combMachCause, `${machine} -> ${cause}`);
         update(combEquipCause, `${equipment} -> ${cause}`);
@@ -256,7 +216,7 @@ export async function GET(req: Request) {
     return NextResponse.json(result);
 
   } catch (error: any) {
-    console.error("Rankings API Error:", error);
+    console.error("Rankings API Error rankings-v2:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

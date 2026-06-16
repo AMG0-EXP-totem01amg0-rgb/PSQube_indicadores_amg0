@@ -1,20 +1,16 @@
-
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { fetchAllRows, getSupabaseVal } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL = 30 * 1000; 
 const cache = new Map<string, { data: any; timestamp: number }>();
 
-function getVal(row: any, key: string) {
-    return row.get(key) || row.get(key.toUpperCase()) || row.get(key.toLowerCase());
-}
-
 function hmsToMinutes(hms: string | null | undefined): number {
-  if (!hms || typeof hms !== "string") return 0;
+  if (!hms) return 0;
+  if (typeof hms === "number") return hms;
+  if (typeof hms !== "string") return 0;
   const parts = hms.split(":").map(Number);
   if (parts.length === 3) {
     // H:MM:SS
@@ -23,11 +19,12 @@ function hmsToMinutes(hms: string | null | undefined): number {
     // MM:SS o HH:MM
     return parts[0] * 60 + parts[1];
   }
-  return 0;
+  return parseFloat(hms) || 0;
 }
 
-function formatTimeToHHmm(timeStr: string | null | undefined): string {
-    if (!timeStr || typeof timeStr !== "string") return "00:00";
+function formatTimeToHHmm(timeStr: any): string {
+    if (!timeStr) return "00:00";
+    if (typeof timeStr !== "string") return "00:00";
     const parts = timeStr.split(":");
     if (parts.length >= 2) {
         const h = parts[0].padStart(2, '0');
@@ -37,9 +34,11 @@ function formatTimeToHHmm(timeStr: string | null | undefined): string {
     return "00:00";
 }
 
-function parseSheetDate(dateStr: string): Date | null {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const cleaned = dateStr.trim();
+function parseSheetDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  
+  const cleaned = String(dateStr).trim();
   let parts: string[] = [];
   if (cleaned.includes("/")) parts = cleaned.split("/");
   else if (cleaned.includes("-")) parts = cleaned.split("-");
@@ -61,7 +60,6 @@ function parseSheetDate(dateStr: string): Date | null {
 
 export async function GET(req: Request) {
   try {
-    // Seguridad: Verificar autenticación
     const { userId } = auth();
     if (!userId) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -84,61 +82,36 @@ export async function GET(req: Request) {
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, "\n");
-    const sheetId = process.env.GOOGLE_SHEET_ID;
+    // Fetch from Supabase parosv2 instead of Google Sheets
+    const rows = await fetchAllRows("parosv2");
 
-    if (!email || !key || !sheetId) return NextResponse.json([]);
-
-    const authClient = new JWT({
-      email,
-      key,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-
-    const doc = new GoogleSpreadsheet(sheetId, authClient);
-    await doc.loadInfo();
-
-    const sheet = doc.sheetsByTitle["PARO DE MAQUINA"];
-    const sheetUsuarios = doc.sheetsByTitle["USUARIOS"];
-
-    if (!sheet) return NextResponse.json([]);
-
-    const [rows, rowsUsuarios] = await Promise.all([
-      sheet.getRows(),
-      sheetUsuarios ? sheetUsuarios.getRows() : Promise.resolve([])
-    ]);
-
-    const usersByRed: Record<string, string> = {};
-    rowsUsuarios.forEach(u => {
-        const red = String(u.get("USUARIORED") || "").trim();
-        const desc = String(u.get("DESCRIPCIÓN USUARIO") || "").trim();
-        if (red) usersByRed[red] = desc;
-    });
+    if (!rows || rows.length === 0) {
+        return NextResponse.json([]);
+    }
 
     const filtrado = rows.filter((r) => {
-      const rowDate = parseSheetDate(String(getVal(r, "FECHA")));
+      const rowDate = parseSheetDate(getSupabaseVal(r, "FECHA"));
       return rowDate && rowDate.getTime() >= startDate.getTime() && rowDate.getTime() <= endDate.getTime();
     });
 
     const resultados = filtrado.map((r) => {
-      const inicioRaw = getVal(r, "INICIO") || "00:00:00";
-      const duracionRaw = getVal(r, "DURACIÓN") || "0:00:00";
-      const userRed = String(getVal(r, "USUARIO") || "").trim();
+      const inicioRaw = getSupabaseVal(r, "INICIO") || "00:00:00";
+      const duracionRaw = getSupabaseVal(r, "DURACIÓN") || getSupabaseVal(r, "duration_minutes") || "0:00:00";
+      const userRed = String(getSupabaseVal(r, "USUARIO") || "").trim();
       
       return {
-        id: getVal(r, "IDPARO") || Math.random().toString(36).substr(2, 9),
-        date: getVal(r, "FECHA"),
-        machineId: getVal(r, "MÁQUINA AFECTADA"),
-        shift: getVal(r, "TURNO"),
+        id: getSupabaseVal(r, "IDPARO") || r.id || Math.random().toString(36).substr(2, 9),
+        date: getSupabaseVal(r, "FECHA"),
+        machineId: getSupabaseVal(r, "MÁQUINA AFECTADA") || getSupabaseVal(r, "machine_id"),
+        shift: getSupabaseVal(r, "TURNO"),
         startTime: formatTimeToHHmm(inicioRaw),
         durationMinutes: hmsToMinutes(duracionRaw),
-        hac: getVal(r, "HAC"),
-        hacDetail: getVal(r, "DETALLE HAC"),
-        reason: getVal(r, "TEXTO DE CAUSA"),
-        sapCause: getVal(r, "CAUSA SAP"),
-        downtimeType: getVal(r, "TIPO PARO"),
-        operatorName: usersByRed[userRed] || userRed || "Desconocido"
+        hac: getSupabaseVal(r, "HAC"),
+        hacDetail: getSupabaseVal(r, "DETALLE HAC") || getSupabaseVal(r, "hac_detail"),
+        reason: getSupabaseVal(r, "TEXTO DE CAUSA") || getSupabaseVal(r, "reason"),
+        sapCause: getSupabaseVal(r, "CAUSA SAP") || getSupabaseVal(r, "sap_cause"),
+        downtimeType: getSupabaseVal(r, "TIPO PARO") || getSupabaseVal(r, "downtime_type"),
+        operatorName: getSupabaseVal(r, "operatorName") || getSupabaseVal(r, "operator_name") || userRed || "Desconocido"
       };
     });
 
@@ -146,7 +119,7 @@ export async function GET(req: Request) {
     return NextResponse.json(resultados);
 
   } catch (err: any) {
-    console.error("API Error:", err);
+    console.error("API Error parosv2:", err);
     return NextResponse.json({ error: "Error" }, { status: 500 });
   }
 }

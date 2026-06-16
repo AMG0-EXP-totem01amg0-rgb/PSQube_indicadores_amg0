@@ -1,22 +1,17 @@
-
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { fetchAllRows, getSupabaseVal } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-// --- CACHÉ ---
 const CACHE_TTL = 60 * 1000;
 const cache = new Map<string, { data: any; timestamp: number }>();
 
-function getVal(row: any, key: string) {
-    return row.get(key) || row.get(key.toUpperCase()) || row.get(key.toLowerCase());
-}
-
-function parseSheetDate(dateStr: string): Date | null {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const cleaned = dateStr.trim();
+function parseSheetDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  
+  const cleaned = String(dateStr).trim();
   let parts: string[] = [];
   if (cleaned.includes("/")) parts = cleaned.split("/");
   else if (cleaned.includes("-")) parts = cleaned.split("-");
@@ -42,17 +37,14 @@ function parseNumber(val: any): number {
     let str = String(val).trim();
     if (str === '') return 0;
     
-    // Formato LATAM: 1.200,50 -> 1200.50
     if (str.includes('.') && str.includes(',')) {
          str = str.replace(/\./g, ''); 
          str = str.replace(',', '.');
     } 
     else if (str.includes('.') && !str.includes(',')) {
-         // Check if it's thousands or decimals
          if ((str.match(/\./g) || []).length > 1) {
              str = str.replace(/\./g, '');
          } else {
-             // If it's something like 1.200, it's likely thousands in this context
              str = str.replace(/\./g, '');
          }
     } else if (str.includes(',')) {
@@ -61,7 +53,6 @@ function parseNumber(val: any): number {
     return parseFloat(str) || 0;
 }
 
-// Normalización robusta: Trim, Uppercase y Quitar Acentos (NFD)
 function cleanName(str: string): string {
     return String(str || "")
         .trim()
@@ -72,7 +63,6 @@ function cleanName(str: string): string {
 
 export async function GET(req: Request) {
   try {
-    // Seguridad: Verificar autenticación
     const { userId } = auth();
     if (!userId) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -86,7 +76,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const cacheKey = `stocks-${startParam}-${endParam}`;
+    const cacheKey = `stocks-v2-${startParam}-${endParam}`;
     const cachedEntry = cache.get(cacheKey);
     const now = Date.now();
     if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
@@ -98,62 +88,42 @@ export async function GET(req: Request) {
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, "\n");
-    const sheetId = process.env.GOOGLE_SHEET_ID;
-
-    if (!email || !key || !sheetId) return NextResponse.json({});
-
-    const authClient = new JWT({ email, key, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-    const doc = new GoogleSpreadsheet(sheetId, authClient);
-    await doc.loadInfo();
-
-    const sheetConteo = doc.sheetsByTitle["DETALLE CONTEO"];
-    const sheetCabecera = doc.sheetsByTitle["PRODUCCION_CABECERA"];
-    const sheetLista = doc.sheetsByTitle["PRODUCCION_LISTA"];
-
-    if (!sheetConteo || !sheetCabecera || !sheetLista) {
-        return NextResponse.json({ error: "Sheets missing" }, { status: 404 });
-    }
-
+    // Fetch from Supabase tables instead of Google Sheets
     const [rowsConteo, rowsCabecera, rowsLista] = await Promise.all([
-        sheetConteo.getRows(),
-        sheetCabecera.getRows(),
-        sheetLista.getRows()
+        fetchAllRows("inventario_fisico"),
+        fetchAllRows("produccionv2"),
+        fetchAllRows("detalles_produccionv2")
     ]);
 
-    // 1. OBTENER PRODUCION NOCHE
+    // 1. OBTENER PRODUCCION NOCHE
     const cabecerasNoche = rowsCabecera.filter(row => {
-        const d = parseSheetDate(getVal(row, "fecha"));
-        const turnoRaw = String(getVal(row, "turno") || "").trim().toUpperCase();
-        // Lógica Estricta: "3.NOCHE" o empieza con "3."
+        const d = parseSheetDate(getSupabaseVal(row, "fecha"));
+        const turnoRaw = String(getSupabaseVal(row, "descripcion_turno") || getSupabaseVal(row, "turno") || "").trim().toUpperCase();
         const isTurnoNoche = turnoRaw === "3.NOCHE" || turnoRaw.startsWith("3.");
         return d && d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime() && isTurnoNoche;
     });
 
-    const idsNoche = new Set(cabecerasNoche.map(r => getVal(r, "id_produccion")));
+    const idsNoche = new Set(cabecerasNoche.map(r => getSupabaseVal(r, "id")));
 
-    // Mapa: Producto -> Tn Producidas en Noche
     const nightProductionMap: Record<string, number> = {};
 
     rowsLista.forEach(row => {
-        if (idsNoche.has(getVal(row, "ID_CABECERA"))) {
-            const material = cleanName(getVal(row, "DESCRIPCION_MATERIAL"));
-            // Prioridad a TN_PRODUCIDA, fallback a tn/bdp
-            const tn = parseNumber(getVal(row, "TN_PRODUCIDA") || getVal(row, "tn/bdp"));
+        const prodId = getSupabaseVal(row, "produccion_id");
+        if (prodId && idsNoche.has(prodId)) {
+            const material = cleanName(getSupabaseVal(row, "descripcion_material"));
+            const tn = parseNumber(getSupabaseVal(row, "tn_producidas"));
             
             if (!nightProductionMap[material]) nightProductionMap[material] = 0;
             nightProductionMap[material] += tn;
         }
     });
 
-    // 2. OBTENER CONTEO (SNAPSHOT)
+    // 2. OBTENER CONTEO (SNAPSHOT) FROM inventario_fisico
     const conteosFiltrados = rowsConteo.filter(row => {
-        const d = parseSheetDate(getVal(row, "FECHA"));
+        const d = parseSheetDate(getSupabaseVal(row, "fecha"));
         return d && d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime();
     });
 
-    // LISTA EXACTA DE PRODUCTOS PRODUCIDOS (Normalizada: Sin acentos, Mayus)
     const PRODUCED_PRODUCTS = new Set([
         "CEMENTO MAESTRO",
         "CEMENTO CPF 40",
@@ -164,12 +134,12 @@ export async function GET(req: Request) {
     const stockMap: Record<string, { displayName: string, qty: number, tn: number, isProduced: boolean, date: string }> = {};
 
     conteosFiltrados.forEach(row => {
-        const productoOriginal = String(getVal(row, "PRODUCTO") || "").trim();
+        const productoOriginal = String(getSupabaseVal(row, "descripcion_material") || "").trim();
         const productoNorm = cleanName(productoOriginal);
         
-        const cantidad = parseNumber(getVal(row, "CANTIDAD"));
-        const tn = parseNumber(getVal(row, "TN"));
-        const fecha = getVal(row, "FECHA");
+        const cantidad = parseNumber(getSupabaseVal(row, "cantidad"));
+        const tn = parseNumber(getSupabaseVal(row, "peso_tn"));
+        const fecha = getSupabaseVal(row, "fecha");
         
         const isProduced = PRODUCED_PRODUCTS.has(productoNorm);
         
@@ -179,22 +149,18 @@ export async function GET(req: Request) {
                 qty: 0, 
                 tn: 0, 
                 isProduced, 
-                date: fecha 
+                date: String(fecha)
             };
         }
         stockMap[productoNorm].qty += cantidad;
         stockMap[productoNorm].tn += tn;
     });
 
-    // 3. SUMAR PRODUCCIÓN NOCHE A LOS TOTALES (Solo una vez por producto)
+    // 3. SUMAR PRODUCCIÓN NOCHE A LOS TOTALES
     Object.keys(stockMap).forEach(productoNorm => {
         if (stockMap[productoNorm].isProduced) {
             const nightTn = nightProductionMap[productoNorm] || 0;
             stockMap[productoNorm].tn += nightTn;
-            
-            // También podríamos estimar bolsas si fuera necesario, 
-            // pero el usuario pidió enfocarse en TN_PRODUCIDA.
-            // Si 1 bolsa = 0.05 Tn, entonces nightBags = nightTn / 0.05
             const nightBags = nightTn / 0.05;
             stockMap[productoNorm].qty += nightBags;
         }
@@ -221,7 +187,7 @@ export async function GET(req: Request) {
     });
 
   } catch (error: any) {
-    console.error("Stocks API Error:", error);
+    console.error("Stocks API Error inventario_fisico:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

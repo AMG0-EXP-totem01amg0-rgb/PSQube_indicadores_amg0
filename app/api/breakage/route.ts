@@ -1,46 +1,35 @@
-
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { fetchAllRows, getSupabaseVal } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-// --- CONFIGURACIÓN DE CACHÉ ---
-const CACHE_TTL = 60 * 1000; // 60 segundos
+const CACHE_TTL = 60 * 1000; 
 const cache = new Map<string, { data: any; timestamp: number }>();
 
-// Helper to generate safe keys for Recharts (replace dots, spaces, special chars)
-// PREPEND 'id_' to ensure it doesn't start with a number (e.g. "3M") which breaks Recharts
 const toSafeKey = (str: string) => `id_${str.trim().replace(/[^a-zA-Z0-9]/g, '_')}`;
 
-function parseSheetDate(dateStr: string): Date | null {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const cleaned = dateStr.trim();
+function parseSheetDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
   
-  // Try split by slash
-  if (cleaned.includes('/')) {
-      const parts = cleaned.split("/");
-      if (parts.length === 3) {
-          const [day, month, year] = parts.map(Number);
-          const fullYear = year < 100 ? 2000 + year : year;
-          return new Date(fullYear, month - 1, day);
-      }
-  }
+  const cleaned = String(dateStr).trim();
+  let parts: string[] = [];
+  if (cleaned.includes("/")) parts = cleaned.split("/");
+  else if (cleaned.includes("-")) parts = cleaned.split("-");
   
-  // Try split by dash
-  if (cleaned.includes('-')) {
-      const parts = cleaned.split("-");
-      // Check if it is YYYY-MM-DD or DD-MM-YYYY
+  if (parts.length === 3) {
+      let day, month, year;
       if (parts[0].length === 4) {
-           return new Date(cleaned + "T12:00:00");
+          // YYYY-MM-DD
+          [year, month, day] = parts.map(Number);
       } else {
-           const [day, month, year] = parts.map(Number);
-           const fullYear = year < 100 ? 2000 + year : year;
-           return new Date(fullYear, month - 1, day);
+          // DD/MM/YYYY
+          [day, month, year] = parts.map(Number);
       }
+      if (year < 100) year += 2000;
+      return new Date(year, month - 1, day);
   }
-
   return null;
 }
 
@@ -51,45 +40,28 @@ function parseNumber(val: any): number {
     let str = String(val).trim();
     if (str === '') return 0;
 
-    // Manejo de Porcentajes
     if (str.includes('%')) {
         str = str.replace('%', '');
-        // Si tiene punto de miles y coma decimal (ej: 1.200,50%)
         if (str.includes('.') && str.includes(',')) {
-             str = str.replace(/\./g, ''); // Quitar miles
-             str = str.replace(',', '.'); // Cambiar coma a punto
+             str = str.replace(/\./g, ''); 
+             str = str.replace(',', '.'); 
         } else if (str.includes(',')) {
              str = str.replace(',', '.');
         }
         return parseFloat(str) / 100;
     }
 
-    // Manejo de Números (Cantidades)
-    // Formato LATAM: 1.200,50 (Punto para miles, Coma para decimales)
-    // Formato US: 1,200.50
-    
-    // Si contiene puntos y comas, asumimos formato LATAM o mixto complejo.
-    // Estrategia segura: Eliminar puntos (miles), reemplazar coma por punto.
     if (str.includes('.') && str.includes(',')) {
-         str = str.replace(/\./g, ''); // Quitar puntos de miles
-         str = str.replace(',', '.');  // Reemplazar coma decimal
+         str = str.replace(/\./g, ''); 
+         str = str.replace(',', '.');  
     } 
-    // Si solo tiene puntos (ej: 1.200), asumimos que es mil si son 3 digitos tras el punto, 
-    // pero es arriesgado. En este contexto industrial, 1.200 suele ser mil doscientos.
     else if (str.includes('.') && !str.includes(',')) {
-         // Verificamos si parece un decimal o un millar.
-         // Si hay más de un punto, son miles seguro (1.000.000)
          if ((str.match(/\./g) || []).length > 1) {
              str = str.replace(/\./g, '');
          } else {
-             // Caso difícil: 1.200 (1200) vs 1.5 (1.5)
-             // Asumiremos que si viene de SAP/Excel Latam, el punto es miles
-             // SIEMPRE que no sea un número pequeño lógico (ej < 100 podria ser decimal)
-             // Para seguridad en roturas (bolsas), eliminamos el punto.
              str = str.replace(/\./g, '');
          }
     }
-    // Si solo tiene coma (1200,50)
     else if (str.includes(',')) {
         str = str.replace(',', '.');
     }
@@ -99,7 +71,6 @@ function parseNumber(val: any): number {
 
 export async function GET(req: Request) {
   try {
-    // Seguridad: Verificar autenticación
     const { userId } = auth();
     if (!userId) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -113,8 +84,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    // 1. CACHÉ CHECK
-    const cacheKey = `breakage-${startParam}-${endParam}`;
+    const cacheKey = `breakage-v2-${startParam}-${endParam}`;
     const cachedEntry = cache.get(cacheKey);
     const now = Date.now();
 
@@ -130,42 +100,43 @@ export async function GET(req: Request) {
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, "\n");
-    const sheetId = process.env.GOOGLE_SHEET_ID;
+    // Fetch from Supabase tables
+    const [rowsCabecera, rowsLista] = await Promise.all([
+        fetchAllRows("produccionv2"),
+        fetchAllRows("detalles_produccionv2")
+    ]);
 
-    if (!email || !key || !sheetId) return NextResponse.json({});
-
-    const authClient = new JWT({ email, key, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-    const doc = new GoogleSpreadsheet(sheetId, authClient);
-    await doc.loadInfo();
-
-    const sheet = doc.sheetsByTitle["PRODUCCION_LISTA"];
-    if (!sheet) return NextResponse.json({ error: "Sheet not found" }, { status: 404 });
-
-    const rows = await sheet.getRows();
-
-    // FILTER BY DATE AND PREPARE DATA
-    const validRows = rows.map(row => {
-        const d = parseSheetDate(row.get("FECHA"));
-        return { row, date: d };
-    }).filter(item => {
-        return item.date && item.date.getTime() >= startDate.getTime() && item.date.getTime() <= endDate.getTime();
+    // Build cabecera map for quick lookup
+    const cabeceraMap = new Map<string, any>();
+    rowsCabecera.forEach(cab => {
+        const id = getSupabaseVal(cab, "id");
+        if (id) {
+            cabeceraMap.set(String(id), cab);
+        }
     });
 
-    // AGGREGATION LOGIC
+    // MAP AND FILTER BY DATE
+    const validRows: { row: any; date: Date }[] = [];
+    rowsLista.forEach(row => {
+        const prodId = getSupabaseVal(row, "produccion_id");
+        const cabecera = cabeceraMap.get(String(prodId));
+        if (!cabecera) return;
+        
+        const d = parseSheetDate(getSupabaseVal(cabecera, "fecha"));
+        if (d && d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime()) {
+            validRows.push({ row, date: d });
+        }
+    });
+
     let totalProduced = 0;
     
-    // Sector Counters
     let sumEnsacadora = 0;
     let sumNoEmboquillada = 0;
     let sumVentocheck = 0;
     let sumTransporte = 0;
 
-    // Aggregation Maps
     const providerStats: Record<string, { produced: number, broken: number }> = {};
     
-    // Internal Material Stats (to be flattened later)
     const materialStats: Record<string, { 
         produced: number, 
         broken: number, 
@@ -177,46 +148,41 @@ export async function GET(req: Request) {
         }
     }> = {};
     
-    // History Map: dateString -> SAFE_PROVIDER_KEY -> {produced, broken}
     const historyMap: Record<string, Record<string, { produced: number, broken: number }>> = {};
 
     validRows.forEach(({ row, date }) => {
-        const produced = parseNumber(row.get("BOLSAS PRODUCIDAS"));
-        const providerRaw = row.get("DESCRIPCION_PROVEEDOR");
+        const produced = parseNumber(getSupabaseVal(row, "bolsas_producidas"));
+        const providerRaw = getSupabaseVal(row, "proveedor_bolsa");
         const provider = providerRaw ? String(providerRaw).trim() : "Sin Proveedor";
-        const providerSafeKey = toSafeKey(provider); // SANITIZED KEY (e.g., id_3M, id_FABRICA_S_A)
+        const providerSafeKey = toSafeKey(provider); 
         
-        const materialRaw = row.get("DESCRIPCION_MATERIAL");
+        const materialRaw = getSupabaseVal(row, "descripcion_material");
         const material = materialRaw ? String(materialRaw).trim() : "Desconocido";
 
-        // Generate consistent date key DD/MM
-        const day = date!.getDate().toString().padStart(2, '0');
-        const month = (date!.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const dateKey = `${day}/${month}`;
 
-        // Breakage Columns
-        const brkEnsacadora = parseNumber(row.get("BOLSAS DESCARTADAS_ENSACADORA"));
-        const brkNoEmb = parseNumber(row.get("BOLSAS DESCARTADAS_NO_EMBOQUILLADA"));
-        const brkVento = parseNumber(row.get("BOLSAS_DESCARTADAS_VENTOCHECK"));
-        const brkTrans = parseNumber(row.get("BOLSAS_DESCARTADAS_TRANSPORTE"));
+        // Breakage Columns from detalles_produccionv2
+        const brkEnsacadora = parseNumber(getSupabaseVal(row, "bolsas_rech_ensacadora"));
+        const brkNoEmb = parseNumber(getSupabaseVal(row, "bolsas_sin_boquilla"));
+        const brkVento = parseNumber(getSupabaseVal(row, "bolsas_rech_ventocheck"));
+        const brkTrans = parseNumber(getSupabaseVal(row, "bolsas_rech_transporte"));
 
         const rowTotalBroken = brkEnsacadora + brkNoEmb + brkVento + brkTrans;
 
-        // Global Sums
         totalProduced += produced;
         sumEnsacadora += brkEnsacadora;
         sumNoEmboquillada += brkNoEmb;
         sumVentocheck += brkVento;
         sumTransporte += brkTrans;
 
-        // Provider Logic
         if (!providerStats[provider]) {
             providerStats[provider] = { produced: 0, broken: 0 };
         }
         providerStats[provider].produced += produced;
         providerStats[provider].broken += rowTotalBroken;
 
-        // Material Logic with Sector Breakdown
         if (!materialStats[material]) {
             materialStats[material] = { 
                 produced: 0, 
@@ -231,8 +197,6 @@ export async function GET(req: Request) {
         materialStats[material].sectors.Ventocheck += brkVento;
         materialStats[material].sectors.Transporte += brkTrans;
 
-
-        // History Logic (Using SAFE KEY)
         if (!historyMap[dateKey]) historyMap[dateKey] = {};
         if (!historyMap[dateKey][providerSafeKey]) historyMap[dateKey][providerSafeKey] = { produced: 0, broken: 0 };
         historyMap[dateKey][providerSafeKey].produced += produced;
@@ -241,18 +205,15 @@ export async function GET(req: Request) {
 
     const totalBroken = sumEnsacadora + sumNoEmboquillada + sumVentocheck + sumTransporte;
     
-    // Construct History Array
     const history = Object.entries(historyMap).map(([date, providers]) => {
         const item: any = { date };
         Object.entries(providers).forEach(([safeProv, stats]) => {
-             // Calculate percentage rate
              const rate = stats.produced > 0 ? (stats.broken / stats.produced) * 100 : 0;
              item[safeProv] = parseFloat(rate.toFixed(2));
         });
         return item;
     });
 
-    // Sort history by date (Day/Month)
     history.sort((a, b) => {
         const [da, ma] = a.date.split('/').map(Number);
         const [db, mb] = b.date.split('/').map(Number);
@@ -260,7 +221,6 @@ export async function GET(req: Request) {
         return da - db;
     });
 
-    // Construct Response with Safe IDs and Flattened structures
     const result = {
         totalProduced,
         totalBroken,
@@ -273,20 +233,19 @@ export async function GET(req: Request) {
         ].filter(s => s.value > 0), 
         
         byProvider: Object.entries(providerStats).map(([name, stats]) => ({
-            id: toSafeKey(name), // Safe ID for charts (e.g. id_3M)
-            name, // Real name for display
+            id: toSafeKey(name), 
+            name, 
             produced: stats.produced,
             broken: stats.broken,
             rate: stats.produced > 0 ? (stats.broken / stats.produced) * 100 : 0
         })).sort((a,b) => b.rate - a.rate),
         
         byMaterial: Object.entries(materialStats).map(([name, stats]) => ({
-            id: toSafeKey(name), // Safe ID
+            id: toSafeKey(name), 
             name,
             produced: stats.produced,
             broken: stats.broken,
             rate: stats.produced > 0 ? (stats.broken / stats.produced) * 100 : 0,
-            // FLATTENED SECTORS for Stacked Bar Chart compatibility
             sector_Ensacadora: stats.sectors.Ensacadora,
             sector_NoEmboquillada: stats.sectors.NoEmboquillada,
             sector_Ventocheck: stats.sectors.Ventocheck,
@@ -296,10 +255,8 @@ export async function GET(req: Request) {
         history 
     };
 
-    // 2. SET CACHE
     cache.set(cacheKey, { data: result, timestamp: now });
 
-    // 3. RETURN
     return NextResponse.json(result, {
         headers: {
             'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
@@ -308,7 +265,7 @@ export async function GET(req: Request) {
     });
 
   } catch (error: any) {
-    console.error("Breakage API Error:", error);
+    console.error("Breakage API Error detalles_produccionv2:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

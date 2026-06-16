@@ -1,21 +1,17 @@
-
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { GoogleSpreadsheet } from "google-spreadsheet";
-import { JWT } from "google-auth-library";
+import { fetchAllRows, getSupabaseVal } from "../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL = 30 * 1000; 
 const cache = new Map<string, { data: any; timestamp: number }>();
 
-function getVal(row: any, key: string) {
-    return row.get(key) || row.get(key.toUpperCase()) || row.get(key.toLowerCase());
-}
-
-function parseSheetDate(dateStr: string): Date | null {
-  if (!dateStr || typeof dateStr !== "string") return null;
-  const cleaned = dateStr.trim();
+function parseSheetDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+  
+  const cleaned = String(dateStr).trim();
   let parts: string[] = [];
   if (cleaned.includes("/")) parts = cleaned.split("/");
   else if (cleaned.includes("-")) parts = cleaned.split("-");
@@ -23,10 +19,8 @@ function parseSheetDate(dateStr: string): Date | null {
   if (parts.length === 3) {
       let day, month, year;
       if (parts[0].length === 4) {
-          // YYYY-MM-DD
           [year, month, day] = parts.map(Number);
       } else {
-          // DD/MM/YYYY
           [day, month, year] = parts.map(Number);
       }
       if (year < 100) year += 2000;
@@ -50,7 +44,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing dates" }, { status: 400 });
     }
 
-    const cacheKey = `novedades-${startParam}-${endParam}`;
+    const cacheKey = `novedades-v2-${startParam}-${endParam}`;
     const cachedEntry = cache.get(cacheKey);
     if (cachedEntry && (Date.now() - cachedEntry.timestamp < CACHE_TTL)) {
        return NextResponse.json(cachedEntry.data);
@@ -59,45 +53,46 @@ export async function GET(req: Request) {
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
-    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, "\n");
-    const sheetId = process.env.GOOGLE_SHEET_ID;
+    // Fetch from Supabase tables
+    const [rowsCabecera, rowsLista] = await Promise.all([
+        fetchAllRows("produccionv2"),
+        fetchAllRows("detalles_produccionv2")
+    ]);
 
-    if (!email || !key || !sheetId) return NextResponse.json([]);
-
-    const authClient = new JWT({
-      email,
-      key,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    // Build cabecera map
+    const cabeceraMap = new Map<string, any>();
+    rowsCabecera.forEach(cab => {
+        const id = getSupabaseVal(cab, "id");
+        if (id) cabeceraMap.set(String(id), cab);
     });
 
-    const doc = new GoogleSpreadsheet(sheetId, authClient);
-    await doc.loadInfo();
+    // Reconstruct novelty shift notes from non-empty observations
+    const validNotes: any[] = [];
+    rowsLista.forEach(row => {
+        const obs = getSupabaseVal(row, "observacion");
+        if (!obs || String(obs).trim() === "") return;
 
-    const sheet = doc.sheetsByTitle["NOVEDADES_TURNOS"];
-    if (!sheet) return NextResponse.json([]);
+        const prodId = getSupabaseVal(row, "produccion_id");
+        const cab = cabeceraMap.get(String(prodId));
+        if (!cab) return;
 
-    const rows = await sheet.getRows();
-
-    const filtrado = rows.filter((r) => {
-      const rowDate = parseSheetDate(String(getVal(r, "FECHA")));
-      return rowDate && rowDate.getTime() >= startDate.getTime() && rowDate.getTime() <= endDate.getTime();
+        const dateStr = getSupabaseVal(cab, "fecha");
+        const d = parseSheetDate(dateStr);
+        if (d && d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime()) {
+            validNotes.push({
+                id: getSupabaseVal(row, "id") || Math.random().toString(36).substr(2, 9),
+                date: dateStr,
+                shift: getSupabaseVal(cab, "descripcion_turno") || getSupabaseVal(cab, "turno") || "Sin Turno",
+                detail: String(obs).trim()
+            });
+        }
     });
 
-    const resultados = filtrado.map((r) => {
-      return {
-        id: getVal(r, "ID_NOVEDAD") || Math.random().toString(36).substr(2, 9),
-        date: getVal(r, "FECHA"),
-        shift: getVal(r, "TURNO"),
-        detail: getVal(r, "DETALLE")
-      };
-    });
-
-    cache.set(cacheKey, { data: resultados, timestamp: Date.now() });
-    return NextResponse.json(resultados);
+    cache.set(cacheKey, { data: validNotes, timestamp: Date.now() });
+    return NextResponse.json(validNotes);
 
   } catch (err: any) {
-    console.error("API Error:", err);
+    console.error("API Error novedades-v2:", err);
     return NextResponse.json({ error: "Error" }, { status: 500 });
   }
 }
