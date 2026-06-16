@@ -170,9 +170,15 @@ export async function GET(req: Request) {
 
         const tnHeader = parseNumber(getSupabaseVal(row, "tn_producidas"));
         const hsMarcha = parseNumber(getSupabaseVal(row, "hs_marcha_tis"));
-        const oee = parseNumber(getSupabaseVal(row, "oee"));
-        const disponibilidad = parseNumber(getSupabaseVal(row, "disponibilidad"));
-        const rendimiento = parseNumber(getSupabaseVal(row, "rendimiento"));
+        
+        let oee = parseNumber(getSupabaseVal(row, "oee"));
+        let disponibilidad = parseNumber(getSupabaseVal(row, "disponibilidad"));
+        let rendimiento = parseNumber(getSupabaseVal(row, "rendimiento"));
+
+        // Normalizar valores de porcentaje a una fracción entre 0 y 1 si están por encima de 1
+        if (oee > 1.0) oee = oee / 100;
+        if (disponibilidad > 1.0) disponibilidad = disponibilidad / 100;
+        if (rendimiento > 1.0) rendimiento = rendimiento / 100;
         
         if (!machineStats[maquinaId]) machineStats[maquinaId] = { bags: 0, tn: 0, name: maquinaDesc };
 
