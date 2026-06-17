@@ -941,16 +941,6 @@ export const SummaryView: React.FC<{
               {/* Left Column (Inputs & Buttons) */}
               <div className="w-full lg:w-1/3 flex flex-col justify-between gap-6">
                 <div className="space-y-4">
-                  <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 space-y-3 font-medium">
-                    <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
-                      <Info size={13} />
-                      Comentario del Reporte
-                    </h4>
-                    <p className="text-[10px] text-slate-400 leading-relaxed">
-                      Agregue una observación general sobre la jornada. El texto ingresado se organizará y renderizará en tiempo real sobre el documento listo para exportar. Quedará en la memoria local sin afectar la base de datos.
-                    </p>
-                  </div>
-
                   {/* Observation Input */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block">Redactar Observación</label>
@@ -1055,14 +1045,6 @@ export const SummaryView: React.FC<{
                     </button>
                   </div>
                 </div>
-
-                {/* Captured Time & Info Footer */}
-                <div className="p-4 bg-slate-900/40 rounded-2xl border border-slate-800/60 space-y-2 text-[10px] text-slate-400 font-bold">
-                  <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Metadatos de Exportación</p>
-                  <p className="flex justify-between"><span>Unidad:</span> <span className="text-white font-bold">Malagueño</span></p>
-                  <p className="flex justify-between"><span>Período:</span> <span className="text-white font-bold font-mono">{isSingleDay ? startStr : `${startStr} a ${endStr}`}</span></p>
-                  <p className="flex justify-between"><span>Impresión:</span> <span className="text-white font-bold font-mono">{new Date().toLocaleString('es-AR', { hour12: false })}</span></p>
-                </div>
               </div>
 
               {/* Right Column (High contrast white PDF page simulator) */}
@@ -1124,10 +1106,10 @@ export const SummaryView: React.FC<{
                       </div>
                     </div>
 
-                    {/* Section 2: Detalle de Stocks Contados en Silo */}
+                    {/* Section 2: Detalle de Stocks Contados */}
                     <div className="mt-6">
                       <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-2.5">
-                        I. Inventario Físico & Disponibilidad en Silos
+                        I. Inventario Físico
                       </h4>
                       <div className="grid grid-cols-4 gap-3">
                         {producedStock.map((item) => (
@@ -1146,14 +1128,14 @@ export const SummaryView: React.FC<{
                     {/* Section 3: Desempeño por Envasadoras (Paletizadoras) */}
                     <div className="mt-6">
                       <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-3">
-                        II. Rendimiento Mecánico & Productividad por Unidad
+                        II. Rendimiento & Productividad
                       </h4>
                       <div className="border border-slate-200 rounded-lg overflow-hidden">
                         <table className="w-full text-left text-xs">
                           <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b border-slate-200">
                             <tr>
                               <th className="px-4 py-2.5">Paletizadora</th>
-                              <th className="px-4 py-2.5 text-right">Volumen (Tn)</th>
+                              <th className="px-4 py-2.5 text-right">Prod. (Tn)</th>
                               <th className="px-4 py-2.5 text-right">Disp. %</th>
                               <th className="px-4 py-2.5 text-right">Rend. %</th>
                               <th className="px-4 py-2.5 text-right">OEE Promedio</th>
@@ -1185,7 +1167,7 @@ export const SummaryView: React.FC<{
                     {/* Section 4: Observaciones de la Jornada (Active user-input) */}
                     <div className="mt-6">
                       <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-2.5">
-                        III. Observaciones de la Jornada & Novedades Operativas
+                        III. Observaciones Operativas
                       </h4>
                       <div className="border border-slate-300 rounded-lg p-4 bg-slate-50/50 min-h-[100px] flex flex-col justify-between">
                         {customObservation.trim() ? (
