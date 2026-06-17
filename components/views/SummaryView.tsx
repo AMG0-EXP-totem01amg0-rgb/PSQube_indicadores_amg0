@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { PackageCheck, Timer, AlertTriangle, TrendingUp, TableProperties, CircleDashed, Loader2, Weight, BarChart2, Calendar, Activity, Clock, Share2, Download, Cpu, Layout } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import { PackageCheck, Timer, AlertTriangle, TrendingUp, TableProperties, CircleDashed, Loader2, Weight, BarChart2, Calendar, Activity, Clock, Share2, Download, Cpu, Layout, X, ClipboardCheck, Info, FileText, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LabelList } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'motion/react';
@@ -95,6 +95,10 @@ export const SummaryView: React.FC<{
 }> = ({ dateRange, setDateRange }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [customObservation, setCustomObservation] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   // Check for mobile on mount and resize
   React.useEffect(() => {
@@ -596,14 +600,13 @@ export const SummaryView: React.FC<{
             </div>
             
             <button 
-                onClick={handleShare}
-                disabled={isSharing}
+                onClick={() => setShowShareModal(true)}
                 data-html2canvas-ignore="true"
-                className={`p-2 rounded-xl transition-all flex items-center gap-2 px-5 text-[11px] font-black shadow-lg border ${isSharing ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400/30 hover:scale-105 active:scale-95'}`}
-                title="Copiar Reporte al Portapapeles"
+                className="p-2 rounded-xl transition-all flex items-center gap-2 px-5 text-[11px] font-black shadow-lg border bg-blue-600 hover:bg-blue-500 text-white border-blue-400/30 hover:scale-105 active:scale-95 cursor-pointer"
+                title="Compartir Reporte Corporativo"
             >
-                {isSharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
-                <span>{isSharing ? 'GENERANDO...' : 'REPORTE'}</span>
+                <Share2 size={16} />
+                <span>COMPARTIR</span>
             </button>
         </div>
         <div data-html2canvas-ignore="true" className="flex flex-col sm:flex-row gap-3 items-center w-full md:w-auto">
@@ -903,6 +906,322 @@ export const SummaryView: React.FC<{
                 </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Dynamic Share PDF-style Modal with custom observation saved in memory */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-[#0f172a] border border-slate-800 rounded-3xl w-full max-w-6xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600/20 text-blue-400 rounded-xl">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-widest">Resumen Corporativo</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Generación de Reporte Ejecutivo en formato de alta resolución (PDF/PNG)</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="p-1 px-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Inner Body (Split Left Editor / Right preview) */}
+            <div className="flex-1 overflow-y-auto p-6 bg-[#0a0f1e] flex flex-col lg:flex-row gap-6">
+              {/* Left Column (Inputs & Buttons) */}
+              <div className="w-full lg:w-1/3 flex flex-col justify-between gap-6">
+                <div className="space-y-4">
+                  <div className="p-4 bg-blue-500/5 rounded-2xl border border-blue-500/10 space-y-3 font-medium">
+                    <h4 className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                      <Info size={13} />
+                      Comentario del Reporte
+                    </h4>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Agregue una observación general sobre la jornada. El texto ingresado se organizará y renderizará en tiempo real sobre el documento listo para exportar. Quedará en la memoria local sin afectar la base de datos.
+                    </p>
+                  </div>
+
+                  {/* Observation Input */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 block">Redactar Observación</label>
+                    <textarea
+                      value={customObservation}
+                      onChange={(e) => setCustomObservation(e.target.value)}
+                      placeholder="Ej: Producción normal en los tres turnos. Se realizó mantenimiento preventivo en PZ1 de 14:00hs a 15:30hs sin impacto crítico en el stock..."
+                      className="w-full h-32 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 placeholder-slate-600 resize-none transition-all font-medium"
+                    />
+                  </div>
+
+                  {/* Actions buttons */}
+                  <div className="space-y-2 pt-2">
+                    <button
+                      disabled={isSharing}
+                      onClick={async () => {
+                        const node = pdfRef.current;
+                        if (!node) return;
+                        setIsSharing(true);
+                        try {
+                          await new Promise(r => setTimeout(r, 200));
+                          const canvas = await html2canvas(node, {
+                            scale: 2,
+                            useCORS: true,
+                            logging: false,
+                            backgroundColor: '#ffffff'
+                          });
+                          const imgData = canvas.toDataURL('image/png', 1.0);
+                          const filename = `Reporte_PSCQube_${startStr}.png`;
+                          const link = document.createElement('a');
+                          link.download = filename;
+                          link.href = imgData;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          setToast({ message: '¡Imagen de alta calidad descargada exitosamente!', type: 'success' });
+                          setTimeout(() => setToast(null), 4000);
+                        } catch (err) {
+                          console.error(err);
+                          setToast({ message: 'Hubo un error al generar la imagen corporativa.', type: 'error' });
+                          setTimeout(() => setToast(null), 4000);
+                        } finally {
+                          setIsSharing(false);
+                        }
+                      }}
+                      className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2.5 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isSharing ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          GENERANDO...
+                        </>
+                      ) : (
+                        <>
+                          <Download size={14} />
+                          DESCARGAR REPORTE (PNG)
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      disabled={isSharing}
+                      onClick={async () => {
+                        const node = pdfRef.current;
+                        if (!node) return;
+                        setIsSharing(true);
+                        try {
+                          await new Promise(r => setTimeout(r, 200));
+                          const canvas = await html2canvas(node, {
+                            scale: 2,
+                            useCORS: true,
+                            logging: false,
+                            backgroundColor: '#ffffff'
+                          });
+                          const imgData = canvas.toDataURL('image/png', 1.0);
+                          const response = await fetch(imgData);
+                          const blob = await response.blob();
+                          
+                          if (navigator.clipboard && (window as any).ClipboardItem) {
+                            await navigator.clipboard.write([
+                              new (window as any).ClipboardItem({
+                                ['image/png']: blob
+                              })
+                            ]);
+                            setToast({ message: '¡Copiado! Ya puedes pegarla directamente en WhatsApp o Slack.', type: 'success' });
+                            setTimeout(() => setToast(null), 4000);
+                          } else {
+                            throw new Error('Fallback download');
+                          }
+                        } catch (err) {
+                          console.error(err);
+                          setToast({ message: 'No se pudo copiar directamente. Intente descargándolo.', type: 'error' });
+                          setTimeout(() => setToast(null), 4000);
+                        } finally {
+                          setIsSharing(false);
+                        }
+                      }}
+                      className="w-full h-11 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2.5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <ClipboardCheck size={14} className="text-blue-400" />
+                      COPIAR AL PORTAPAPELES
+                    </button>
+                  </div>
+                </div>
+
+                {/* Captured Time & Info Footer */}
+                <div className="p-4 bg-slate-900/40 rounded-2xl border border-slate-800/60 space-y-2 text-[10px] text-slate-400 font-bold">
+                  <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest">Metadatos de Exportación</p>
+                  <p className="flex justify-between"><span>Unidad:</span> <span className="text-white font-bold">Malagueño</span></p>
+                  <p className="flex justify-between"><span>Período:</span> <span className="text-white font-bold font-mono">{isSingleDay ? startStr : `${startStr} a ${endStr}`}</span></p>
+                  <p className="flex justify-between"><span>Impresión:</span> <span className="text-white font-bold font-mono">{new Date().toLocaleString('es-AR', { hour12: false })}</span></p>
+                </div>
+              </div>
+
+              {/* Right Column (High contrast white PDF page simulator) */}
+              <div className="flex-1 bg-slate-950/50 rounded-2xl p-4 flex justify-center items-start overflow-auto shadow-inner relative max-h-[70vh] lg:max-h-none">
+                {/* Scaled Preview Wrapper */}
+                <div className="origin-top scale-[0.6] sm:scale-[0.7] md:scale-[0.75] lg:scale-[0.65] xl:scale-[0.75] transition-transform duration-300 h-0" style={{ minWidth: '800px', height: 'fit-content', paddingBottom: '1050px' }}>
+                  
+                  {/* The actual high-contrast white document element we target with html2canvas */}
+                  <div
+                    ref={pdfRef}
+                    className="bg-white text-slate-900 border border-slate-300 rounded-lg shadow-2xl p-10 text-left select-none relative"
+                    style={{ width: '800px', fontFamily: 'sans-serif', minHeight: '1000px' }}
+                  >
+                    {/* Header Row */}
+                    <div className="pb-5 border-b-4 border-slate-900 flex justify-between items-start">
+                      <div>
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none uppercase">Reporte General de Expedición</h1>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">PSCQube • Expedición Planta Malagueño • Holcim Argentina</p>
+                        <div className="mt-4 flex gap-4 text-xs font-bold">
+                          <div>
+                            <span className="text-slate-400 text-[8px] uppercase tracking-wider block">Período de Análisis</span>
+                            <span className="text-[13px] font-black text-blue-900 uppercase">
+                              {isSingleDay ? formatDate(dateRange.start) : `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono text-2xl font-black tracking-tighter text-blue-900 block leading-none">PSCQube</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Holcim Group</span>
+                      </div>
+                    </div>
+
+                    {/* Section 1: KPI Resumen */}
+                    <div className="mt-6 grid grid-cols-2 gap-4">
+                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Producción Total Consolidada</span>
+                          <span className="text-2xl font-black text-slate-900 tracking-tight mt-1 block">
+                            {totalTn.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-xs font-bold text-slate-400">Tn</span>
+                          </span>
+                        </div>
+                        <div className="w-10 h-10 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                          <PackageCheck size={20} />
+                        </div>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Stock Total Registrado</span>
+                          <span className="text-2xl font-black text-emerald-700 tracking-tight mt-1 block">
+                            {totalStockTn.toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-xs font-bold text-emerald-600/60 font-medium ml-1">Tn</span>
+                          </span>
+                        </div>
+                        <div className="w-10 h-10 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-center text-emerald-600">
+                          <Clock size={20} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Detalle de Stocks Contados en Silo */}
+                    <div className="mt-6">
+                      <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-2.5">
+                        I. Inventario Físico & Disponibilidad en Silos
+                      </h4>
+                      <div className="grid grid-cols-4 gap-3">
+                        {producedStock.map((item) => (
+                          <div key={item.id} className="border border-slate-200 bg-slate-50/50 p-3 rounded-lg text-center">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block truncate" title={item.product}>
+                              {item.product.replace('CEMENTO ', '')}
+                            </span>
+                            <span className="text-base font-black text-slate-900 block mt-1 tracking-tight">
+                              {(item.tonnage || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-[10px] text-slate-400 font-bold ml-0.5">Tn</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Section 3: Desempeño por Envasadoras (Paletizadoras) */}
+                    <div className="mt-6">
+                      <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-3">
+                        II. Rendimiento Mecánico & Productividad por Unidad
+                      </h4>
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase border-b border-slate-200">
+                            <tr>
+                              <th className="px-4 py-2.5">Paletizadora</th>
+                              <th className="px-4 py-2.5 text-right">Volumen (Tn)</th>
+                              <th className="px-4 py-2.5 text-right">Disp. %</th>
+                              <th className="px-4 py-2.5 text-right">Rend. %</th>
+                              <th className="px-4 py-2.5 text-right">OEE Promedio</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150">
+                            {byMachine.map((m: any) => (
+                              <tr key={m.machineId} className="hover:bg-slate-50 font-bold text-slate-700">
+                                <td className="px-4 py-2.5 text-slate-900 font-extrabold uppercase">{m.name}</td>
+                                <td className="px-4 py-2.5 text-right font-mono text-slate-900">
+                                  {m.valueTn.toLocaleString(undefined, { maximumFractionDigits: 0 })} Tn
+                                </td>
+                                <td className={`px-4 py-2.5 text-right font-mono font-black ${m.availability < 76 ? 'text-red-600' : 'text-slate-900'}`}>
+                                  {m.availability.toFixed(0)}%
+                                </td>
+                                <td className={`px-4 py-2.5 text-right font-mono font-black ${m.performance < 92 ? 'text-red-600' : 'text-slate-900'}`}>
+                                  {m.performance.toFixed(0)}%
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-mono font-black text-blue-900">
+                                  {m.oee.toFixed(0)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Section 4: Observaciones de la Jornada (Active user-input) */}
+                    <div className="mt-6">
+                      <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-2.5">
+                        III. Observaciones de la Jornada & Novedades Operativas
+                      </h4>
+                      <div className="border border-slate-300 rounded-lg p-4 bg-slate-50/50 min-h-[100px] flex flex-col justify-between">
+                        {customObservation.trim() ? (
+                          <p className="text-xs text-slate-800 leading-relaxed font-semibold whitespace-pre-wrap">
+                            {customObservation}
+                          </p>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic font-semibold">
+                            Sin observaciones registradas para este reporte. Escriba en la sección izquierda del editor para personalizar este espacio del resumen corporativo.
+                          </span>
+                        )}
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block text-right mt-4">
+                          Redactor Técnico de Turno
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer Certification */}
+                    <div className="absolute bottom-6 left-10 right-10 flex justify-between items-center text-[8px] font-black text-slate-400 uppercase border-t border-slate-200 pt-3">
+                      <span> PSCQube • HOLCIM ARGENTINA S.A. </span>
+                      <span> GENERADO: {new Date().toLocaleDateString('es-AR')} {new Date().toLocaleTimeString('es-AR', { hour12: false })} </span>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Action Toast internally in SummaryView */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 px-5 py-3 rounded-2xl flex items-center gap-2 text-xs font-black z-[210] shadow-2xl border bg-slate-900 text-white animate-bounce border-slate-800">
+          {toast.type === 'success' ? <Check className="text-emerald-400" size={16} /> : <AlertTriangle className="text-red-400" size={16} />}
+          <span>{toast.message}</span>
         </div>
       )}
     </div>
