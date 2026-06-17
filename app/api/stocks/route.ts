@@ -119,13 +119,14 @@ export async function GET(req: Request) {
     });
 
     // 2. OBTENER CONTEO (SNAPSHOT) FROM inventario_fisico
-    const conteosFiltrados = rowsConteo.filter(row => {
+    const conteosPorFecha = rowsConteo.filter(row => {
         const d = parseSheetDate(getSupabaseVal(row, "fecha"));
         if (!d) return false;
+        return d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime();
+    });
 
-        const isDateMatch = d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime();
-        if (!isDateMatch) return false;
-
+    // Try to filter by NOCHE shift if possible
+    let conteosFiltrados = conteosPorFecha.filter(row => {
         const rowTurnoId = getSupabaseVal(row, "turno_id") || getSupabaseVal(row, "id_turno");
         const rowTurnoRaw = String(getSupabaseVal(row, "turno") || getSupabaseVal(row, "descripcion_turno") || "").trim().toUpperCase();
 
@@ -136,11 +137,24 @@ export async function GET(req: Request) {
         return isShiftMatch;
     });
 
+    // Fallback: if shift-filtered returns nothing, use all records of the date
+    if (conteosFiltrados.length === 0) {
+        conteosFiltrados = conteosPorFecha;
+    }
+
     const stockMap: Record<string, { displayName: string, qty: number, tn: number, isProduced: boolean, date: string }> = {};
 
     conteosFiltrados.forEach(row => {
-        const rowMatId = getSupabaseVal(row, "material_id") || getSupabaseVal(row, "id_material");
-        const productoOriginal = String(getSupabaseVal(row, "descripcion_material") || getSupabaseVal(row, "material") || "").trim();
+        const rowMatId = getSupabaseVal(row, "material_id") || 
+                         getSupabaseVal(row, "id_material") ||
+                         getSupabaseVal(row, "id_materiales") ||
+                         getSupabaseVal(row, "idmaterial");
+                         
+        const productoOriginal = String(getSupabaseVal(row, "descripcion_material") || 
+                                        getSupabaseVal(row, "material") || 
+                                        getSupabaseVal(row, "nombre") || 
+                                        getSupabaseVal(row, "nombre_material") || 
+                                        "").trim();
         const productoNorm = cleanName(productoOriginal);
 
         // Find match in productive materials list from materialesv2
@@ -159,6 +173,18 @@ export async function GET(req: Request) {
             const mat = materialesProductivos.find(m => {
                 const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
                 return mNameNorm === productoNorm;
+            });
+            if (mat) {
+                matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
+                isProductive = true;
+            }
+        }
+        
+        if (!isProductive && rowMatId) {
+            const normMatId = cleanName(String(rowMatId));
+            const mat = materialesProductivos.find(m => {
+                const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
+                return mNameNorm === normMatId;
             });
             if (mat) {
                 matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();

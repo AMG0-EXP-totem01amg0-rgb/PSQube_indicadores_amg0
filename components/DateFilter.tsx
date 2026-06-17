@@ -50,7 +50,9 @@ export const DateFilter: React.FC<DateFilterProps> = ({ onFilterChange, defaultF
             start = getStartOfMonth();
         }
         
-        onFilterChange({ start, end }, defaultFilter);
+        if (onFilterChange) {
+            onFilterChange({ start, end }, defaultFilter);
+        }
     }
   }, [defaultFilter, onFilterChange]); // Run once on mount
 

@@ -65,7 +65,7 @@ export async function GET() {
     reports.clientInitialized = true;
 
     // Test table list
-    const tablesToTest = ["produccionv2", "parosv2", "detalles_produccionv2", "inventario_fisico", "inventario_fisicov2"];
+    const tablesToTest = ["produccionv2", "parosv2", "detalles_produccionv2", "inventario_fisico", "inventario_fisicov2", "materialesv2"];
     reports.tableTests = {};
 
     // Get diagnostics as well
@@ -90,6 +90,8 @@ export async function GET() {
           status,
           statusText,
           rowCountFetched: data ? data.length : 0,
+          keys: data && data.length > 0 ? Object.keys(data[0]) : [],
+          allRows: data || [],
           error: error ? {
             message: error.message,
             details: error.details,

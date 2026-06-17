@@ -118,11 +118,8 @@ export const SummaryView: React.FC<{
   });
 
   const { data: stockResult, isLoading: loadingStocks } = useQuery({
-    queryKey: ['stocks', 'today'],
-    queryFn: () => {
-      const today = new Date();
-      return fetchStocks(today, today);
-    },
+    queryKey: ['stocks', dateRange.start.toISOString(), dateRange.end.toISOString()],
+    queryFn: () => fetchStocks(dateRange.start, dateRange.end),
     refetchInterval: 300000,
   });
 
