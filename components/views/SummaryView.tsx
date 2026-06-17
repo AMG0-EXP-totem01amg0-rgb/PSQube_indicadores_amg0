@@ -825,73 +825,71 @@ export const SummaryView: React.FC<{
 
                 {/* ROW 3: SHIFT PRODUCTION TABLE (Full Width) */}
                 <div className="w-full mt-2">
-                    <div data-chart="shift" className="bg-white/[0.03] backdrop-blur-md rounded-3xl shadow-2xl border border-white/10 flex flex-col relative overflow-hidden group">
-                        <div className="flex items-center gap-4 bg-[#0f172a]/80 px-8 py-5 relative z-10 border-b border-white/10">
-                            <div className="p-2.5 bg-blue-500/20 rounded-xl border border-blue-500/30">
-                                <TableProperties className="text-blue-400" size={24} />
-                            </div>
+                    <div data-chart="shift" className="bg-white/[0.03] backdrop-blur-sm rounded-2xl shadow-xl border border-white/10 flex flex-col relative overflow-hidden group">
+                        <div className="flex items-center gap-3 bg-white/5 px-5 py-3 relative z-10 border-b border-white/5">
+                            <TableProperties className="text-blue-400" size={18} />
                             <div>
-                                <h3 className="font-black text-white uppercase text-base tracking-[0.2em]">Producción y Métricas por Turno</h3>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Detalle consolidado por máquina y horario</p>
+                                <h3 className="font-black text-blue-100 uppercase text-[11px] tracking-[0.2em]">Producción y Métricas por Turno</h3>
+                                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Detalle consolidado por máquina y horario</p>
                             </div>
                         </div>
-                        <div data-chart-wrapper data-table="shift" className="p-8 flex-grow relative z-10 overflow-x-auto no-scrollbar w-full flex flex-col">
+                        <div data-chart-wrapper data-table="shift" className="p-5 flex-grow relative z-10 overflow-x-auto no-scrollbar w-full flex flex-col">
                 {shiftData.length > 0 ? (
-                    <table className="w-full text-left border-collapse min-w-[900px]">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
                         <thead>
                             <tr className="border-b border-white/10">
-                                <th className="py-5 px-6 text-[12px] font-black uppercase tracking-widest text-slate-500">Turno / Paletizadora</th>
-                                <th className="py-5 px-6 text-[12px] font-black uppercase tracking-widest text-slate-500 text-right">Producción (Tn)</th>
-                                <th className="py-5 px-6 text-[12px] font-black uppercase tracking-widest text-slate-500 text-right">HS Marcha</th>
-                                <th className="py-5 px-6 text-[12px] font-black uppercase tracking-widest text-slate-500 text-right">Disp %</th>
-                                <th className="py-5 px-6 text-[12px] font-black uppercase tracking-widest text-slate-500 text-right">Rend %</th>
+                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500">Turno / Paletizadora</th>
+                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Producción (Tn)</th>
+                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">HS Marcha</th>
+                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Disp %</th>
+                                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Rend %</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {shiftData.map((shift, idx) => (
                                 <React.Fragment key={shift.name}>
                                     <tr className="bg-white/[0.04] transition-colors group/row border-l-4 border-blue-500">
-                                        <td className="py-6 px-6">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,1)] animate-pulse"></div>
-                                                <span className="text-lg font-black text-white uppercase tracking-tight">{shift.name}</span>
+                                        <td className="py-3 px-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,1)] animate-pulse"></div>
+                                                <span className="text-sm font-black text-white uppercase tracking-wider">{shift.name}</span>
                                             </div>
                                         </td>
-                                        <td className="py-6 px-6 text-right">
-                                            <span className="text-4xl font-black text-white tracking-tighter">
+                                        <td className="py-3 px-4 text-right">
+                                            <span className="text-xl font-black text-white tracking-tight">
                                                 {(shift.valueTn || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
-                                            <span className="text-sm font-bold text-slate-500 ml-2 uppercase tracking-widest">Tn</span>
+                                            <span className="text-[10px] font-bold text-slate-500 ml-1.5 uppercase">Tn</span>
                                         </td>
-                                        <td className="py-6 px-6 text-right">
-                                            <span className="text-3xl font-black text-emerald-400 tracking-tighter">
+                                        <td className="py-3 px-4 text-right">
+                                            <span className="text-lg font-black text-emerald-400 tracking-tight">
                                                 {(shift.hsMarcha || 0).toFixed(1)}
                                             </span>
                                         </td>
-                                        <td className="py-6 px-6 text-right">
-                                            <span className="text-3xl font-black text-amber-400 tracking-tighter">{shift.disp}%</span>
+                                        <td className="py-3 px-4 text-right">
+                                            <span className="text-lg font-black text-amber-400 tracking-tight">{shift.disp}%</span>
                                         </td>
-                                        <td className="py-6 px-6 text-right">
-                                            <span className="text-3xl font-black text-indigo-400 tracking-tighter">{shift.rend}%</span>
+                                        <td className="py-3 px-4 text-right">
+                                            <span className="text-lg font-black text-indigo-400 tracking-tight">{shift.rend}%</span>
                                         </td>
                                     </tr>
                                     {shift.breakdown.map((m: any, mIdx: number) => (
                                         <tr key={`${shift.name}-${m.machineName}`} className="hover:bg-white/[0.08] transition-colors border-b border-white/5 last:border-0">
-                                            <td className="py-4 px-14">
-                                                <span className="text-sm font-bold text-slate-300 uppercase tracking-widest">{m.machineName}</span>
+                                            <td className="py-2.5 px-10">
+                                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{m.machineName}</span>
                                             </td>
-                                            <td className="py-4 px-6 text-right">
-                                                <span className={`text-2xl font-black tracking-tight ${getTnColor(m.machineName, m.valueTn)}`}>{(m.valueTn || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                                                <span className="text-xs font-bold text-slate-500 ml-2">Tn</span>
+                                            <td className="py-2.5 px-4 text-right">
+                                                <span className={`text-sm font-bold tracking-tight ${getTnColor(m.machineName, m.valueTn)}`}>{(m.valueTn || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                <span className="text-[10px] font-semibold text-slate-500 ml-1">Tn</span>
                                             </td>
-                                            <td className="py-4 px-6 text-right">
-                                                <span className="text-2xl font-black text-emerald-500/80 tracking-tight">{(m.hsMarcha || 0).toFixed(1)}</span>
+                                            <td className="py-2.5 px-4 text-right">
+                                                <span className="text-sm font-bold text-emerald-500/80 tracking-tight">{(m.hsMarcha || 0).toFixed(1)}</span>
                                             </td>
-                                            <td className="py-4 px-6 text-right">
-                                                <span className={`text-2xl font-black tracking-tight ${getAvailabilityColor(m.disp)}`}>{m.disp}%</span>
+                                            <td className="py-2.5 px-4 text-right">
+                                                <span className={`text-sm font-bold tracking-tight ${getAvailabilityColor(m.disp)}`}>{m.disp}%</span>
                                             </td>
-                                            <td className="py-4 px-6 text-right">
-                                                <span className={`text-2xl font-black tracking-tight ${getPerformanceColor(m.rend)}`}>{m.rend}%</span>
+                                            <td className="py-2.5 px-4 text-right">
+                                                <span className={`text-sm font-bold tracking-tight ${getPerformanceColor(m.rend)}`}>{m.rend}%</span>
                                             </td>
                                         </tr>
                                     ))}
