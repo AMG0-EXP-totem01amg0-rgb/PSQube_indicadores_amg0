@@ -1083,7 +1083,7 @@ export const SummaryView: React.FC<{
                     <div className="pb-5 border-b-4 border-slate-900 flex justify-between items-start">
                       <div>
                         <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none uppercase">Reporte General de Expedición</h1>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">PSCQube • Expedición Planta Malagueño • Holcim Argentina</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">PSCQube • Planta Malagueño</p>
                         <div className="mt-4 flex gap-4 text-xs font-bold">
                           <div>
                             <span className="text-slate-400 text-[8px] uppercase tracking-wider block">Período de Análisis</span>
@@ -1096,7 +1096,7 @@ export const SummaryView: React.FC<{
 
                       <div className="text-right">
                         <span className="font-mono text-2xl font-black tracking-tighter text-blue-900 block leading-none">PSCQube</span>
-                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Holcim Group</span>
+                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Holcim Argentina S.A.</span>
                       </div>
                     </div>
 
@@ -1215,7 +1215,7 @@ export const SummaryView: React.FC<{
                     <div className="mt-5">
                       <div className="flex justify-between items-end border-b border-slate-200 pb-1 mb-2">
                         <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">
-                          IV. Stock Físico (Materiales Productivos)
+                          IV. Stock Conteo
                         </h4>
                         <span className="text-[9px] font-black text-emerald-900 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
                           Total Conteo: {totalStockTn.toLocaleString(undefined, { maximumFractionDigits: 0 })} Tn
@@ -1241,7 +1241,7 @@ export const SummaryView: React.FC<{
                     {/* Section V: Los cinco paros internos más relevantes por paletizadora */}
                     <div className="mt-5">
                       <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-200 pb-1 mb-2">
-                        V. Paros Internos más Relevantes (Top 5 por Máquina)
+                        V. Paros Internos Relevantes
                       </h4>
                       <div className="grid grid-cols-3 gap-3">
                         {[
