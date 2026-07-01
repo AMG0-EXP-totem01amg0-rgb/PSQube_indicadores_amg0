@@ -915,7 +915,7 @@ export const SummaryView: React.FC<{
                                     <div className="text-[10px] font-black uppercase tracking-widest text-sky-400 mb-2">Despacho Total</div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-slate-500">TN</span>
                                     </div>
@@ -927,7 +927,7 @@ export const SummaryView: React.FC<{
                                     <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Bolsa</div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {(despachosResult?.bolsa || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            {(despachosResult?.bolsa || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-slate-500">TN</span>
                                     </div>
@@ -939,7 +939,7 @@ export const SummaryView: React.FC<{
                                     <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Granel</div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
-                                            {(despachosResult?.granel || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            {(despachosResult?.granel || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-slate-500">TN</span>
                                     </div>
@@ -955,7 +955,7 @@ export const SummaryView: React.FC<{
                                     </div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight drop-shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-                                            {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                            {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-sky-400">TN</span>
                                     </div>
@@ -1527,7 +1527,7 @@ export const SummaryView: React.FC<{
                           VII. Resumen de Despachos (Expedición)
                         </span>
                         <span className="text-[8.5px] font-black text-sky-300 bg-sky-950/30 border border-sky-900/30 px-2 py-0.5 rounded">
-                          Total Acumulado Mes: {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tn
+                          Total Acumulado Mes: {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Tn
                         </span>
                       </div>
                       <div className="border border-slate-700/60 bg-slate-800/25 rounded-lg p-2.5 font-bold">
@@ -1542,25 +1542,25 @@ export const SummaryView: React.FC<{
                             <tr>
                               <td className="py-1.5 px-2 text-sky-400 font-extrabold">Despacho total</td>
                               <td className="py-1.5 px-2 text-right text-white font-black">
-                                {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tn
+                                {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Tn
                               </td>
                             </tr>
                             <tr>
                               <td className="py-1.5 px-2 text-emerald-400 font-extrabold">Bolsa</td>
                               <td className="py-1.5 px-2 text-right text-white font-black">
-                                {(despachosResult?.bolsa || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tn
+                                {(despachosResult?.bolsa || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Tn
                               </td>
                             </tr>
                             <tr>
                               <td className="py-1.5 px-2 text-amber-400 font-extrabold">Granel</td>
                               <td className="py-1.5 px-2 text-right text-white font-black">
-                                {(despachosResult?.granel || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tn
+                                {(despachosResult?.granel || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Tn
                               </td>
                             </tr>
                             <tr className="bg-sky-500/5 font-black border-t border-sky-500/20">
                               <td className="py-1.5 px-2 text-violet-400 font-black text-[10px]">Despacho acumulado (Mes actual)</td>
                               <td className="py-1.5 px-2 text-right text-sky-350 font-black text-[10.5px]">
-                                {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tn
+                                {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Tn
                               </td>
                             </tr>
                           </tbody>

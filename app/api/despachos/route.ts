@@ -177,9 +177,9 @@ export async function GET(req: Request) {
             });
         }
 
-        // Sum for MTD (Month-to-Date) up to the selected end date
+        // Sum for MTD (Month-to-Date) up to the selected end date (strictly Bolsa and Granel)
         if (t >= mtdStartDate.getTime() && t <= mtdEndDate.getTime()) {
-            if (isDespacho || isProductive || isGranel) {
+            if (isProductive || isGranel) {
                 mtdTotalSum += tonnage;
             }
         }
@@ -194,8 +194,8 @@ export async function GET(req: Request) {
         bolsaSum = 75 + dateHash * 10;
         granelSum = 35 + dateHash * 5;
         
-        // Month to date represents about 25-30x daily sum for realistic metrics representation
-        mtdTotalSum = (despachoTotalSum + bolsaSum + granelSum) * (endDate.getDate() || 15) * 0.85;
+        // Month to date represents about 25-30x daily sum for realistic metrics representation (strictly Bolsa + Granel)
+        mtdTotalSum = (bolsaSum + granelSum) * (endDate.getDate() || 15) * 0.85;
     }
 
     const responseData = {
