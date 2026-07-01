@@ -66,7 +66,7 @@ export async function GET(req: Request) {
 
     // Fetch from Supabase tables instead of Google Sheets, including turnosv2 and materialesv2
     const [rowsConteo, rowsCabecera, rowsLista, rowsTurnos, rowsMateriales] = await Promise.all([
-        fetchAllRows("inventario_fisico"),
+        fetchAllRows("inventario_fisicov2"),
         fetchAllRows("produccionv2"),
         fetchAllRows("detalles_produccionv2"),
         fetchAllRows("turnosv2"),
@@ -80,11 +80,13 @@ export async function GET(req: Request) {
     });
     const turnoNocheId = turnoNocheRow ? getSupabaseVal(turnoNocheRow, "id") : null;
 
-    // Filter productive materials where es_productivo is true/TRUE
-    const materialesProductivos = rowsMateriales.filter(m => {
+    // Helper to determine if a material is productive
+    const isMaterialProductive = (m: any): boolean => {
         const esProd = getSupabaseVal(m, "es_productivo");
         return esProd === true || esProd === "true" || esProd === "TRUE" || esProd === 1 || esProd === "1";
-    });
+    };
+
+    const materialesProductivos = rowsMateriales.filter(isMaterialProductive);
 
     // 1. OBTENER PRODUCCION NOCHE
     const cabecerasNoche = rowsCabecera.filter(row => {
@@ -165,29 +167,24 @@ export async function GET(req: Request) {
         }
     });
 
-    // 2. OBTENER CONTEO (SNAPSHOT) FROM inventario_fisico
+    // 2. OBTENER CONTEO (SNAPSHOT) FROM inventario_fisicov2
     const conteosPorFecha = rowsConteo.filter(row => {
         const d = parseSheetDate(getSupabaseVal(row, "fecha"));
         if (!d) return false;
         return d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime();
     });
 
-    // Try to filter by NOCHE shift if possible
-    let conteosFiltrados = conteosPorFecha.filter(row => {
-        const rowTurnoId = getSupabaseVal(row, "turno_id") || getSupabaseVal(row, "id_turno");
+    // Filter strictly by NOCHE shift, no fallback to all of the date's records
+    const conteosFiltrados = conteosPorFecha.filter(row => {
+        const rowTurnoId = getSupabaseVal(row, "turno_id") || getSupabaseVal(row, "id_turno") || getSupabaseVal(row, "id_turnos") || getSupabaseVal(row, "idturnos");
         const rowTurnoRaw = String(getSupabaseVal(row, "turno") || getSupabaseVal(row, "descripcion_turno") || "").trim().toUpperCase();
 
-        const isShiftMatch = (rowTurnoId && turnoNocheId)
-            ? String(rowTurnoId) === String(turnoNocheId)
-            : (rowTurnoRaw === "NOCHE" || rowTurnoRaw.includes("NOCHE") || rowTurnoRaw.startsWith("3."));
-            
-        return isShiftMatch;
+        if (turnoNocheId && rowTurnoId) {
+            return String(rowTurnoId) === String(turnoNocheId);
+        }
+        
+        return rowTurnoRaw === "NOCHE" || rowTurnoRaw.includes("NOCHE") || rowTurnoRaw.startsWith("3.");
     });
-
-    // Fallback: if shift-filtered returns nothing, use all records of the date
-    if (conteosFiltrados.length === 0) {
-        conteosFiltrados = conteosPorFecha;
-    }
 
     const stockMap: Record<string, { displayName: string, qty: number, tn: number, isProduced: boolean, date: string }> = {};
 
@@ -217,47 +214,32 @@ export async function GET(req: Request) {
                                         "").trim();
         const productoNorm = cleanName(productoOriginal);
 
-        // Find match in productive materials list from materialesv2
-        let matchedMaterialName = "";
-        let isProductive = false;
-
+        // Find match in ALL materials list from materialesv2 to support non-productive items
+        let matchedMat = null;
         if (rowMatId) {
-            const mat = materialesProductivos.find(m => String(getSupabaseVal(m, "id")) === String(rowMatId));
-            if (mat) {
-                matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                isProductive = true;
-            }
+            matchedMat = rowsMateriales.find(m => String(getSupabaseVal(m, "id")) === String(rowMatId));
         }
-
-        if (!isProductive && productoNorm) {
-            const mat = materialesProductivos.find(m => {
+        if (!matchedMat && productoNorm) {
+            matchedMat = rowsMateriales.find(m => {
                 const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
                 return mNameNorm === productoNorm || 
                        (mNameNorm.length > 3 && productoNorm.length > 3 && (mNameNorm.includes(productoNorm) || productoNorm.includes(mNameNorm)));
             });
-            if (mat) {
-                matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                isProductive = true;
-            }
         }
-        
-        if (!isProductive && rowMatId) {
+        if (!matchedMat && rowMatId) {
             const normMatId = cleanName(String(rowMatId));
-            const mat = materialesProductivos.find(m => {
+            matchedMat = rowsMateriales.find(m => {
                 const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
                 return mNameNorm === normMatId || 
                        (mNameNorm.length > 3 && normMatId.length > 3 && (mNameNorm.includes(normMatId) || normMatId.includes(mNameNorm)));
             });
-            if (mat) {
-                matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                isProductive = true;
-            }
         }
 
-        // We only showcase productive materials
-        if (!isProductive) {
-            return;
-        }
+        const matchedMaterialName = matchedMat 
+            ? String(getSupabaseVal(matchedMat, "nombre") || getSupabaseVal(matchedMat, "name") || "").trim()
+            : productoOriginal;
+
+        const isProd = matchedMat ? isMaterialProductive(matchedMat) : false;
 
         const cantidad = parseNumber(getSupabaseVal(row, "cantidad") || getSupabaseVal(row, "qty"));
         const tn = parseNumber(getSupabaseVal(row, "peso_tn") || getSupabaseVal(row, "peso") || getSupabaseVal(row, "tonelaje") || getSupabaseVal(row, "tn"));
@@ -270,8 +252,8 @@ export async function GET(req: Request) {
                 displayName: matchedMaterialName, 
                 qty: 0, 
                 tn: 0, 
-                isProduced: true, 
-                date: String(fecha)
+                isProduced: isProd, 
+                date: String(fecha || startParam)
             };
         }
         stockMap[normKey].qty += cantidad;
@@ -281,7 +263,7 @@ export async function GET(req: Request) {
         }
     });
 
-    // 3. SUMAR PRODUCCIÓN NOCHE A LOS TOTALES
+    // 3. SUMAR PRODUCCIÓN NOCHE A LOS TOTALES DE CEMENTOS PRODUCIDOS
     Object.keys(stockMap).forEach(productoNorm => {
         if (stockMap[productoNorm].isProduced) {
             const nightTn = nightProductionMap[productoNorm] || 0;
