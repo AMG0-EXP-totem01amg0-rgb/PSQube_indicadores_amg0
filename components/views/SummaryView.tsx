@@ -109,6 +109,12 @@ export const SummaryView: React.FC<{
     return d;
   }, []);
 
+  const targetStockDate = useMemo(() => {
+    const d = new Date(dateRange.start);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, [dateRange.start]);
+
   // Check for mobile on mount and resize
   React.useEffect(() => {
     const checkMobile = () => {
@@ -136,10 +142,15 @@ export const SummaryView: React.FC<{
     refetchInterval: 300000,
   });
 
-  const { data: todayStockResult } = useQuery({
-    queryKey: ['stocks', todayDate.toISOString(), todayDate.toISOString()],
-    queryFn: () => fetchStocks(todayDate, todayDate),
-    enabled: filterType === 'yesterday',
+  const { data: targetDayStockResult, isLoading: loadingTargetStocks } = useQuery({
+    queryKey: ['stocks', targetStockDate.toISOString(), targetStockDate.toISOString()],
+    queryFn: () => fetchStocks(targetStockDate, targetStockDate),
+    refetchInterval: 300000,
+  });
+
+  const { data: targetDayProdResult, isLoading: loadingTargetProd } = useQuery({
+    queryKey: ['production', targetStockDate.toISOString(), targetStockDate.toISOString()],
+    queryFn: () => fetchProductionStats(targetStockDate, targetStockDate),
     refetchInterval: 300000,
   });
 
@@ -148,7 +159,7 @@ export const SummaryView: React.FC<{
     queryFn: () => fetchBreakageStats(dateRange.start, dateRange.end),
   });
 
-  const isLoading = loadingDowntimes || loadingProd || loadingStocks || loadingBreakage;
+  const isLoading = loadingDowntimes || loadingProd || loadingStocks || loadingBreakage || loadingTargetStocks || loadingTargetProd;
 
   const handleFilterChange = (range: { start: Date, end: Date }, type: 'today' | 'yesterday' | 'week' | 'month' | 'custom') => {
     setDateRange(range);
@@ -447,9 +458,9 @@ export const SummaryView: React.FC<{
 
   const nightProductionMap = useMemo(() => {
     const map: Record<string, number> = {};
-    if (!prodResult?.productionByShiftProduct) return map;
+    if (!targetDayProdResult?.productionByShiftProduct) return map;
 
-    prodResult.productionByShiftProduct.forEach((item: any) => {
+    targetDayProdResult.productionByShiftProduct.forEach((item: any) => {
       const shiftUpper = String(item.shift || '').toUpperCase();
       const isNight = shiftUpper.includes('NOCHE') && !shiftUpper.includes('FIN');
       if (isNight) {
@@ -459,34 +470,30 @@ export const SummaryView: React.FC<{
       }
     });
     return map;
-  }, [prodResult]);
+  }, [targetDayProdResult]);
 
   const producedStock = useMemo(() => {
-    const activeResult = filterType === 'yesterday' ? todayStockResult : stockResult;
-    if (!activeResult?.items) return [];
+    if (!targetDayStockResult?.items) return [];
     
     const order = ["CEMENTO CPF 40", "CEMENTO CPC 30", "CEMENTO MAESTRO", "CEMENTO RAPIDO"];
-    const items = activeResult.items
+    const items = targetDayStockResult.items
       .filter(i => i.isProduced)
       .map(item => {
         let tonnage = item.tonnage || 0;
         
-        // If filter is 'yesterday', add the night shift production of yesterday
-        if (filterType === 'yesterday') {
-          const productNorm = cleanName(item.product);
-          // Try exact match or sub-string match
-          let nightTn = nightProductionMap[productNorm] || 0;
-          if (!nightTn) {
-            // fallback: find any key that includes or is included in productNorm
-            const matchedKey = Object.keys(nightProductionMap).find(k => 
-              k === productNorm || k.includes(productNorm) || productNorm.includes(k)
-            );
-            if (matchedKey) {
-              nightTn = nightProductionMap[matchedKey];
-            }
+        const productNorm = cleanName(item.product);
+        // Try exact match or sub-string match
+        let nightTn = nightProductionMap[productNorm] || 0;
+        if (!nightTn) {
+          // fallback: find any key that includes or is included in productNorm
+          const matchedKey = Object.keys(nightProductionMap).find(k => 
+            k === productNorm || k.includes(productNorm) || productNorm.includes(k)
+          );
+          if (matchedKey) {
+            nightTn = nightProductionMap[matchedKey];
           }
-          tonnage += nightTn;
         }
+        tonnage += nightTn;
         
         return {
           ...item,
@@ -506,11 +513,11 @@ export const SummaryView: React.FC<{
         if (indexB === -1) return -1;
         return indexA - indexB;
       });
-  }, [stockResult, todayStockResult, filterType, nightProductionMap]);
+  }, [targetDayStockResult, nightProductionMap]);
 
   const dispatchStock = useMemo(() => {
-    if (!stockResult?.items) return [];
-    return stockResult.items
+    if (!targetDayStockResult?.items) return [];
+    return targetDayStockResult.items
       .filter(i => 
         !i.isProduced && 
         !i.product.toUpperCase().includes('TARIMA') && 
@@ -522,7 +529,7 @@ export const SummaryView: React.FC<{
         !i.product.toUpperCase().includes('FILM')
       )
       .sort((a, b) => b.tonnage - a.tonnage);
-  }, [stockResult]);
+  }, [targetDayStockResult]);
 
   const totalStockTn = useMemo(() => {
     return producedStock.reduce((acc, item) => acc + item.tonnage, 0);
@@ -531,13 +538,6 @@ export const SummaryView: React.FC<{
   const totalDispatchTn = useMemo(() => {
     return dispatchStock.reduce((acc, item) => acc + item.tonnage, 0);
   }, [dispatchStock]);
-
-  const targetStockDate = useMemo(() => {
-    if (filterType === 'yesterday') {
-      return todayDate;
-    }
-    return dateRange.start;
-  }, [filterType, todayDate, dateRange.start]);
 
   const formatDateForStock = (date: Date) => {
     const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
