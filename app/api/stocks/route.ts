@@ -75,8 +75,8 @@ export async function GET(req: Request) {
 
     // Map turnosv2 to find the ID with the name 'NOCHE'
     const turnoNocheRow = rowsTurnos.find(t => {
-        const name = String(getSupabaseVal(t, "name") || getSupabaseVal(t, "nombre") || "").toUpperCase();
-        return name === "NOCHE" || name.includes("NOCHE");
+        const name = String(getSupabaseVal(t, "name") || getSupabaseVal(t, "nombre") || getSupabaseVal(t, "descripcion") || "").toUpperCase();
+        return name === "NOCHE" || name.includes("NOCHE") || name.startsWith("3.");
     });
     const turnoNocheId = turnoNocheRow ? getSupabaseVal(turnoNocheRow, "id") : null;
 
