@@ -65,6 +65,7 @@ export interface ProductionStats {
   byMachine: { name: string; value: number; valueTn: number }[]; 
   byMachineProduct: { name: string; [key: string]: number | string }[];
   details: ShiftMetric[];
+  productionByShiftProduct?: Array<{ shift: string; product: string; tonnage: number }>;
 }
 
 export interface BreakageHistoryItem {

@@ -101,6 +101,14 @@ export const SummaryView: React.FC<{
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
 
+  const [filterType, setFilterType] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('today');
+
+  const todayDate = useMemo(() => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0); // safe from timezone shifts
+    return d;
+  }, []);
+
   // Check for mobile on mount and resize
   React.useEffect(() => {
     const checkMobile = () => {
@@ -128,6 +136,13 @@ export const SummaryView: React.FC<{
     refetchInterval: 300000,
   });
 
+  const { data: todayStockResult } = useQuery({
+    queryKey: ['stocks', todayDate.toISOString(), todayDate.toISOString()],
+    queryFn: () => fetchStocks(todayDate, todayDate),
+    enabled: filterType === 'yesterday',
+    refetchInterval: 300000,
+  });
+
   const { data: breakageResult, isLoading: loadingBreakage } = useQuery({
     queryKey: ['breakage', dateRange.start.toISOString(), dateRange.end.toISOString()],
     queryFn: () => fetchBreakageStats(dateRange.start, dateRange.end),
@@ -135,8 +150,9 @@ export const SummaryView: React.FC<{
 
   const isLoading = loadingDowntimes || loadingProd || loadingStocks || loadingBreakage;
 
-  const handleFilterChange = (range: { start: Date, end: Date }) => {
+  const handleFilterChange = (range: { start: Date, end: Date }, type: 'today' | 'yesterday' | 'week' | 'month' | 'custom') => {
     setDateRange(range);
+    setFilterType(type);
   };
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
@@ -420,12 +436,65 @@ export const SummaryView: React.FC<{
     Math.max(...productBreakdown.map(p => p.valueTn), 1), 
   [productBreakdown]);
 
+  const cleanName = (val: string): string => {
+    return val
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const nightProductionMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!prodResult?.productionByShiftProduct) return map;
+
+    prodResult.productionByShiftProduct.forEach((item: any) => {
+      const shiftUpper = String(item.shift || '').toUpperCase();
+      const isNight = shiftUpper.includes('NOCHE') && !shiftUpper.includes('FIN');
+      if (isNight) {
+        const productNorm = cleanName(item.product);
+        if (!map[productNorm]) map[productNorm] = 0;
+        map[productNorm] += item.tonnage || 0;
+      }
+    });
+    return map;
+  }, [prodResult]);
+
   const producedStock = useMemo(() => {
-    if (!stockResult?.items) return [];
+    const activeResult = filterType === 'yesterday' ? todayStockResult : stockResult;
+    if (!activeResult?.items) return [];
+    
     const order = ["CEMENTO CPF 40", "CEMENTO CPC 30", "CEMENTO MAESTRO", "CEMENTO RAPIDO"];
-    return stockResult.items
+    const items = activeResult.items
       .filter(i => i.isProduced)
-      .sort((a, b) => {
+      .map(item => {
+        let tonnage = item.tonnage || 0;
+        
+        // If filter is 'yesterday', add the night shift production of yesterday
+        if (filterType === 'yesterday') {
+          const productNorm = cleanName(item.product);
+          // Try exact match or sub-string match
+          let nightTn = nightProductionMap[productNorm] || 0;
+          if (!nightTn) {
+            // fallback: find any key that includes or is included in productNorm
+            const matchedKey = Object.keys(nightProductionMap).find(k => 
+              k === productNorm || k.includes(productNorm) || productNorm.includes(k)
+            );
+            if (matchedKey) {
+              nightTn = nightProductionMap[matchedKey];
+            }
+          }
+          tonnage += nightTn;
+        }
+        
+        return {
+          ...item,
+          tonnage
+        };
+      });
+
+    return items.sort((a, b) => {
         const nameA = a.product.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         const nameB = b.product.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         
@@ -437,7 +506,7 @@ export const SummaryView: React.FC<{
         if (indexB === -1) return -1;
         return indexA - indexB;
       });
-  }, [stockResult]);
+  }, [stockResult, todayStockResult, filterType, nightProductionMap]);
 
   const dispatchStock = useMemo(() => {
     if (!stockResult?.items) return [];
@@ -462,6 +531,25 @@ export const SummaryView: React.FC<{
   const totalDispatchTn = useMemo(() => {
     return dispatchStock.reduce((acc, item) => acc + item.tonnage, 0);
   }, [dispatchStock]);
+
+  const targetStockDate = useMemo(() => {
+    if (filterType === 'yesterday') {
+      return todayDate;
+    }
+    return dateRange.start;
+  }, [filterType, todayDate, dateRange.start]);
+
+  const formatDateForStock = (date: Date) => {
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const months = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const dayName = days[date.getDay()];
+    const dayNum = String(date.getDate()).padStart(2, '0');
+    const monthName = months[date.getMonth()];
+    return `${dayName} ${dayNum} de ${monthName}`;
+  };
 
   const totalDowntimeMinutes = useMemo(() => {
     if (!downtimeResult) return 0;
@@ -724,7 +812,9 @@ export const SummaryView: React.FC<{
                     <div className="lg:col-span-8">
                         <div className="bg-white/[0.03] backdrop-blur-sm rounded-2xl shadow-xl border border-white/10 overflow-hidden h-full">
                             <div className="bg-emerald-600/80 text-white px-5 py-2.5 flex justify-between items-center border-b border-white/5">
-                                <h3 className="font-black uppercase tracking-[0.2em] text-[11px]">Stock a las 06:00 hs.</h3>
+                                <h3 className="font-black uppercase tracking-[0.1em] text-[11px] truncate">
+                                  Stock a las 06:00 hs. {formatDateForStock(targetStockDate)}
+                                </h3>
                                 <Clock size={18} />
                             </div>
                             <div className="p-5 grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -1305,9 +1395,9 @@ export const SummaryView: React.FC<{
                     {/* Section IV: Tn de materiales productivos contadas en stock físico */}
                     <div className="mt-5">
                       <div className="flex justify-between items-center bg-emerald-950/45 border border-emerald-500/30 px-3 py-1.5 rounded-lg mb-2.5">
-                        <span className="text-emerald-300 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                        <span className="text-emerald-300 text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 truncate mr-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          IV. STOCK CEMENTOS PRODUCIDOS (06:00 HS)
+                          IV. STOCK CEMENTOS PRODUCIDOS (06:00 HS - {formatDateForStock(targetStockDate)})
                         </span>
                         <span className="text-[8.5px] font-black text-emerald-300 bg-emerald-950/30 border border-emerald-900/30 px-2 py-0.5 rounded">
                           Total Conteo: {totalStockTn.toLocaleString(undefined, { maximumFractionDigits: 0 })} Tn

@@ -331,6 +331,8 @@ export async function GET(req: Request) {
         detailsMap[key].count += 1;
     });
 
+    const productionByShiftProduct: Array<{ shift: string; product: string; tonnage: number }> = [];
+
     listaFiltrada.forEach(row => {
         const idCab = getSupabaseVal(row, "produccion_id");
         const bags = parseNumber(getSupabaseVal(row, "bolsas_producidas"));
@@ -371,6 +373,14 @@ export async function GET(req: Request) {
         if (!machineProductMap[maquinaDesc]) machineProductMap[maquinaDesc] = {};
         if (!machineProductMap[maquinaDesc][material]) machineProductMap[maquinaDesc][material] = 0;
         machineProductMap[maquinaDesc][material] += tn;
+
+        // Group by shift and product
+        const existing = productionByShiftProduct.find(p => p.shift === turno && p.product === material);
+        if (existing) {
+            existing.tonnage += tn;
+        } else {
+            productionByShiftProduct.push({ shift: turno, product: material, tonnage: tn });
+        }
     });
 
     const byShift = Object.entries(shiftTotalsTn).map(([name, value]) => ({
@@ -421,7 +431,8 @@ export async function GET(req: Request) {
         byShift,
         byMachine,
         byMachineProduct,
-        details
+        details,
+        productionByShiftProduct
     };
 
     cache.set(cacheKey, { data: result, timestamp: now });
