@@ -909,34 +909,22 @@ export const SummaryView: React.FC<{
                             </span>
                         </div>
                         <div className="p-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {/* CARD 1: Despacho Total */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {/* CARD 1: Bolsa */}
                                 <div className="bg-white/[0.02] border border-white/5 rounded-xl p-5 hover:bg-white/[0.04] transition-all duration-300">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-sky-400 mb-2">Despacho Total</div>
-                                    <div className="flex items-baseline gap-1.5">
-                                        <span className="text-3xl font-black text-white tracking-tight">
-                                            {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                        </span>
-                                        <span className="text-xs font-bold text-slate-500">TN</span>
-                                    </div>
-                                    <div className="text-[9px] text-slate-500 mt-1 font-semibold">Productos marcados como despacho en el maestro</div>
-                                </div>
-
-                                {/* CARD 2: Bolsa */}
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-5 hover:bg-white/[0.04] transition-all duration-300">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Bolsa</div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Despacho Bolsa</div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
                                             {(despachosResult?.bolsa || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-slate-500">TN</span>
                                     </div>
-                                    <div className="text-[9px] text-slate-500 mt-1 font-semibold">Productos marcados como productivo en el maestro</div>
+                                    <div className="text-[9px] text-slate-500 mt-1 font-semibold">Productos marcados como productivo (bolsa) en el maestro</div>
                                 </div>
 
-                                {/* CARD 3: Granel */}
+                                {/* CARD 2: Granel */}
                                 <div className="bg-white/[0.02] border border-white/5 rounded-xl p-5 hover:bg-white/[0.04] transition-all duration-300">
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Granel</div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-2">Despacho Granel</div>
                                     <div className="flex items-baseline gap-1.5">
                                         <span className="text-3xl font-black text-white tracking-tight">
                                             {(despachosResult?.granel || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -946,20 +934,17 @@ export const SummaryView: React.FC<{
                                     <div className="text-[9px] text-slate-500 mt-1 font-semibold">Productos marcados como granel en el maestro</div>
                                 </div>
 
-                                {/* CARD 4: Despacho Acumulado (MTD) */}
+                                {/* CARD 3: Despacho Total */}
                                 <div className="bg-sky-500/5 border border-sky-500/10 rounded-xl p-5 hover:bg-sky-500/10 transition-all duration-300 relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/5 rounded-full blur-2xl -mr-5 -mt-5"></div>
-                                    <div className="text-[10px] font-black uppercase tracking-widest text-violet-400 mb-2 flex items-center gap-1.5">
-                                        Despacho Acumulado
-                                        <span className="text-[8px] bg-violet-950/60 border border-violet-850/40 text-violet-300 px-1.5 py-0.2 rounded font-black">MES</span>
-                                    </div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-sky-400 mb-2">Despacho Total</div>
                                     <div className="flex items-baseline gap-1.5">
-                                        <span className="text-3xl font-black text-white tracking-tight drop-shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-                                            {(despachosResult?.despachoAcumulado || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                        <span className="text-3xl font-black text-white tracking-tight drop-shadow-[0_0_15px_rgba(14,165,233,0.3)]">
+                                            {(despachosResult?.despachoTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                         </span>
                                         <span className="text-xs font-bold text-sky-400">TN</span>
                                     </div>
-                                    <div className="text-[9px] text-sky-300/80 mt-1 font-bold">Acumulado total de lo que va del mes actual</div>
+                                    <div className="text-[9px] text-sky-300/80 mt-1 font-bold">Suma de Bolsa y Granel de la fecha seleccionada</div>
                                 </div>
                             </div>
                         </div>
