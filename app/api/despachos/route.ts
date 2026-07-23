@@ -76,13 +76,22 @@ export async function GET(req: Request) {
         materialsMap.set(String(getSupabaseVal(m, "id")), m);
     });
 
+    const checkTrue = (val: any) => {
+        if (val === true || val === 1) return true;
+        if (typeof val === 'string') {
+            const s = val.trim().toUpperCase();
+            return s === "TRUE" || s === "SI" || s === "SÍ" || s === "1";
+        }
+        return false;
+    };
+
     const getMaterialProperties = (row: any) => {
         const rowMatId = getSupabaseVal(row, "material_id") || 
                          getSupabaseVal(row, "id_material") || 
                          getSupabaseVal(row, "material") || 
                          getSupabaseVal(row, "producto_id");
 
-        const materialName = String(
+        const rawMaterialName = String(
             getSupabaseVal(row, "descripcion_material") || 
             getSupabaseVal(row, "material") || 
             getSupabaseVal(row, "nombre") || 
@@ -94,8 +103,8 @@ export async function GET(req: Request) {
         if (rowMatId) {
             matchedMat = materialsMap.get(String(rowMatId));
         }
-        if (!matchedMat && materialName) {
-            const nameNorm = cleanName(materialName);
+        if (!matchedMat && rawMaterialName) {
+            const nameNorm = cleanName(rawMaterialName);
             matchedMat = rowsMateriales.find(m => {
                 const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
                 return mNameNorm === nameNorm || 
@@ -103,40 +112,27 @@ export async function GET(req: Request) {
             });
         }
 
-        const nameNorm = cleanName(materialName);
+        const nameNorm = cleanName(rawMaterialName);
         const nameContainsBolsa = nameNorm.includes("BOLSA");
         const nameContainsGranel = nameNorm.includes("GRANEL");
         const nameContainsDespacho = nameNorm.includes("DESPACHO");
 
-        const isDespacho = (matchedMat ? (
-            getSupabaseVal(matchedMat, "despacho") === true ||
-            getSupabaseVal(matchedMat, "despacho") === "true" ||
-            getSupabaseVal(matchedMat, "despacho") === "TRUE" ||
-            getSupabaseVal(matchedMat, "despacho") === 1 ||
-            getSupabaseVal(matchedMat, "despacho") === "1" ||
-            getSupabaseVal(matchedMat, "es_despacho") === true ||
-            getSupabaseVal(matchedMat, "es_despacho") === "true"
-        ) : false) || nameContainsDespacho;
-
-        const isProductive = (matchedMat ? (
-            getSupabaseVal(matchedMat, "es_productivo") === true ||
-            getSupabaseVal(matchedMat, "es_productivo") === "true" ||
-            getSupabaseVal(matchedMat, "es_productivo") === "TRUE" ||
-            getSupabaseVal(matchedMat, "es_productivo") === 1 ||
-            getSupabaseVal(matchedMat, "es_productivo") === "1" ||
-            getSupabaseVal(matchedMat, "productivo") === true ||
-            getSupabaseVal(matchedMat, "productivo") === "true"
-        ) : false) || nameContainsBolsa;
-
+        // 1. Classification Granel vs Bolsa according to Material Master
         const isGranel = (matchedMat ? (
-            getSupabaseVal(matchedMat, "granel") === true ||
-            getSupabaseVal(matchedMat, "granel") === "true" ||
-            getSupabaseVal(matchedMat, "granel") === "TRUE" ||
-            getSupabaseVal(matchedMat, "granel") === 1 ||
-            getSupabaseVal(matchedMat, "granel") === "1" ||
-            getSupabaseVal(matchedMat, "es_granel") === true ||
-            getSupabaseVal(matchedMat, "es_granel") === "true"
+            checkTrue(getSupabaseVal(matchedMat, "granel")) ||
+            checkTrue(getSupabaseVal(matchedMat, "es_granel")) ||
+            checkTrue(getSupabaseVal(matchedMat, "isBulk")) ||
+            checkTrue(getSupabaseVal(matchedMat, "is_bulk"))
         ) : false) || nameContainsGranel;
+
+        const isBolsa = !isGranel && ((matchedMat ? (
+            checkTrue(getSupabaseVal(matchedMat, "despacho")) ||
+            checkTrue(getSupabaseVal(matchedMat, "es_despacho")) ||
+            checkTrue(getSupabaseVal(matchedMat, "isDispatch")) ||
+            checkTrue(getSupabaseVal(matchedMat, "is_dispatch")) ||
+            checkTrue(getSupabaseVal(matchedMat, "es_productivo")) ||
+            checkTrue(getSupabaseVal(matchedMat, "productivo"))
+        ) : false) || nameContainsBolsa || nameContainsDespacho);
 
         const tonnage = parseNumber(
             getSupabaseVal(row, "tonelaje") || 
@@ -148,22 +144,31 @@ export async function GET(req: Request) {
             getSupabaseVal(row, "qty")
         );
 
-        return { isDespacho, isProductive, isGranel, tonnage, materialName, matchedMat };
+        const matId = matchedMat 
+            ? String(getSupabaseVal(matchedMat, "id") || getSupabaseVal(matchedMat, "nombre") || "") 
+            : (cleanName(rawMaterialName) || "DESCONOCIDO");
+
+        const materialName = rawMaterialName || (matchedMat ? (getSupabaseVal(matchedMat, "nombre") || getSupabaseVal(matchedMat, "name")) : "Desconocido");
+
+        return { isGranel, isBolsa, tonnage, materialName, matId, matchedMat };
     };
 
-    // Calculate filter range values (Daily / Custom Selected Range)
-    let despachoTotalSum = 0;
-    let bolsaSum = 0;
-    let granelSum = 0;
-    const details: any[] = [];
+    // Store raw dispatch records grouped by dateKey (YYYY-MM-DD) and matId
+    interface ShiftRecord {
+        shiftOrder: number;
+        rawShift: string;
+        tonnage: number;
+        rowIndex: number;
+        isGranel: boolean;
+        isBolsa: boolean;
+        materialName: string;
+        dateObj: Date;
+    }
 
-    // Calculate Month-to-Date (MTD) sum for dispatch accumulation
-    let mtdTotalSum = 0;
-
-    // Use a Set to prevent any potential duplicate rows from double-counting
+    const dailyMap = new Map<string, Map<string, ShiftRecord[]>>();
     const processedRowIds = new Set<string>();
 
-    rowsDespachos.forEach(row => {
+    rowsDespachos.forEach((row, rowIndex) => {
         const rowId = String(getSupabaseVal(row, "id") || getSupabaseVal(row, "ID") || "");
         if (rowId) {
             if (processedRowIds.has(rowId)) return;
@@ -173,33 +178,115 @@ export async function GET(req: Request) {
         const d = parseSheetDate(getSupabaseVal(row, "fecha") || getSupabaseVal(row, "date"));
         if (!d) return;
 
-        const t = d.getTime();
-        const { isDespacho, isProductive, isGranel, tonnage, materialName, matchedMat } = getMaterialProperties(row);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${y}-${m}-${dayStr}`;
 
-        // Sum for filtered date range (bolsa and granel)
-        if (t >= startDate.getTime() && t <= endDate.getTime()) {
-            if (isProductive) bolsaSum += tonnage;
-            if (isGranel) granelSum += tonnage;
+        const rawShift = String(
+            getSupabaseVal(row, "turno") || 
+            getSupabaseVal(row, "shift") || 
+            getSupabaseVal(row, "turno_id") || 
+            getSupabaseVal(row, "id_turno") || 
+            getSupabaseVal(row, "turn") || 
+            "1"
+        ).trim();
 
-            details.push({
-                material: materialName || (matchedMat ? (getSupabaseVal(matchedMat, "nombre") || getSupabaseVal(matchedMat, "name")) : "Desconocido"),
-                tonnage,
-                isDespacho,
-                isProductive,
-                isGranel
-            });
+        const normShift = cleanName(rawShift);
+        let shiftOrder = 1;
+        if (normShift.includes("3") || normShift.includes("NOCHE") || normShift.includes("NIGHT")) {
+            shiftOrder = 3;
+        } else if (normShift.includes("2") || normShift.includes("TARDE") || normShift.includes("AFTERNOON")) {
+            shiftOrder = 2;
+        } else if (normShift.includes("1") || normShift.includes("MANANA") || normShift.includes("MORNING")) {
+            shiftOrder = 1;
+        } else {
+            const parsedInt = parseInt(normShift.replace(/\D/g, ""), 10);
+            if (!isNaN(parsedInt)) {
+                shiftOrder = parsedInt;
+            }
         }
 
-        // Sum for MTD (Month-to-Date) covering up to the selected endDate (strictly Bolsa and Granel)
-        if (t >= mtdStartDate.getTime() && t <= mtdEndDate.getTime()) {
-            if (isProductive || isGranel) {
-                mtdTotalSum += tonnage;
+        const props = getMaterialProperties(row);
+
+        if (!dailyMap.has(dateKey)) {
+            dailyMap.set(dateKey, new Map<string, ShiftRecord[]>());
+        }
+        const matMap = dailyMap.get(dateKey)!;
+
+        if (!matMap.has(props.matId)) {
+            matMap.set(props.matId, []);
+        }
+        matMap.get(props.matId)!.push({
+            shiftOrder,
+            rawShift,
+            tonnage: props.tonnage,
+            rowIndex,
+            isGranel: props.isGranel,
+            isBolsa: props.isBolsa,
+            materialName: props.materialName,
+            dateObj: d
+        });
+    });
+
+    let bolsaSum = 0;
+    let granelSum = 0;
+    let mtdTotalSum = 0;
+    const details: any[] = [];
+
+    // Calculate effective cumulative values per material per day
+    dailyMap.forEach((matMap, dateKey) => {
+        let dayBolsaSum = 0;
+        let dayGranelSum = 0;
+        let sampleDateObj: Date | null = null;
+
+        matMap.forEach((records) => {
+            if (records.length === 0) return;
+            sampleDateObj = records[0].dateObj;
+
+            // Sort shift records chronologically (shiftOrder then rowIndex)
+            records.sort((a, b) => a.shiftOrder - b.shiftOrder || a.rowIndex - b.rowIndex);
+
+            // 2.1 Take the cumulative value reported in the latest registered shift of the day for this material
+            const latestRecord = records[records.length - 1];
+            const effectiveTonnage = latestRecord.tonnage;
+
+            if (latestRecord.isGranel) {
+                dayGranelSum += effectiveTonnage;
+            } else if (latestRecord.isBolsa) {
+                dayBolsaSum += effectiveTonnage;
+            }
+
+            const t = latestRecord.dateObj.getTime();
+            if (t >= startDate.getTime() && t <= endDate.getTime()) {
+                details.push({
+                    material: latestRecord.materialName,
+                    tonnage: effectiveTonnage,
+                    shift: latestRecord.rawShift,
+                    dateKey,
+                    isGranel: latestRecord.isGranel,
+                    isBolsa: latestRecord.isBolsa,
+                    isProductive: latestRecord.isBolsa,
+                    isDespacho: latestRecord.isBolsa || latestRecord.isGranel
+                });
+            }
+        });
+
+        if (sampleDateObj) {
+            const t = (sampleDateObj as Date).getTime();
+            // Sum for filtered date range
+            if (t >= startDate.getTime() && t <= endDate.getTime()) {
+                bolsaSum += dayBolsaSum;
+                granelSum += dayGranelSum;
+            }
+            // Sum for MTD range
+            if (t >= mtdStartDate.getTime() && t <= mtdEndDate.getTime()) {
+                mtdTotalSum += (dayBolsaSum + dayGranelSum);
             }
         }
     });
 
-    // despachoTotal is the sum of bolsa and granel for the filtered range
-    despachoTotalSum = bolsaSum + granelSum;
+    let despachoTotalSum = bolsaSum + granelSum;
 
     // Elegant Mock Fallback to keep preview alive and functional if database returns zero rows
     if (rowsDespachos.length === 0) {
