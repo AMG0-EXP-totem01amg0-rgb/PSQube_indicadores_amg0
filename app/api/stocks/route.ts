@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
-export const dynamic = "force-dynamic";
-
-const CACHE_TTL = 60 * 1000;
-const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+};
 
 function parseNumber(val: any): number {
     if (typeof val === 'number') return val;
@@ -52,15 +51,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const cacheKey = `stocks-v2-${startParam}-${endParam}`;
-    const cachedEntry = cache.get(cacheKey);
-    const now = Date.now();
-    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
-       return NextResponse.json(cachedEntry.data, {
-           headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30', 'X-Cache': 'HIT-MEMORY' }
-       });
-    }
-
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
@@ -87,6 +77,65 @@ export async function GET(req: Request) {
     };
 
     const materialesProductivos = rowsMateriales.filter(isMaterialProductive);
+
+    // Build O(1) material maps
+    const materialsById = new Map<string, any>();
+    const prodMaterialsById = new Map<string, any>();
+    const prodMaterialsByNormName = new Map<string, any>();
+    const allMaterialsByNormName = new Map<string, any>();
+
+    rowsMateriales.forEach(m => {
+        const id = getSupabaseVal(m, "id");
+        const name = String(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "").trim();
+        const norm = cleanName(name);
+
+        if (id) {
+            materialsById.set(String(id), m);
+            if (isMaterialProductive(m)) {
+                prodMaterialsById.set(String(id), m);
+            }
+        }
+        if (norm) {
+            allMaterialsByNormName.set(norm, m);
+            if (isMaterialProductive(m)) {
+                prodMaterialsByNormName.set(norm, m);
+            }
+        }
+    });
+
+    const findProdMaterial = (rowMatId: any, materialNorm: string) => {
+        if (rowMatId && prodMaterialsById.has(String(rowMatId))) {
+            return prodMaterialsById.get(String(rowMatId));
+        }
+        if (materialNorm && prodMaterialsByNormName.has(materialNorm)) {
+            return prodMaterialsByNormName.get(materialNorm);
+        }
+        if (materialNorm) {
+            return materialesProductivos.find(m => {
+                const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
+                return mNameNorm === materialNorm || 
+                       (mNameNorm.length > 3 && materialNorm.length > 3 && (mNameNorm.includes(materialNorm) || materialNorm.includes(mNameNorm)));
+            }) || null;
+        }
+        return null;
+    };
+
+    const findAllMaterial = (rowMatId: any, materialNorm: string) => {
+        if (rowMatId && materialsById.has(String(rowMatId))) {
+            return materialsById.get(String(rowMatId));
+        }
+        if (materialNorm && allMaterialsByNormName.has(materialNorm)) {
+            return allMaterialsByNormName.get(materialNorm);
+        }
+        if (materialNorm) {
+            return rowsMateriales.find(m => {
+                const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
+                return mNameNorm === materialNorm || 
+                       (mNameNorm.length > 3 && materialNorm.length > 3 && (mNameNorm.includes(materialNorm) || materialNorm.includes(mNameNorm)));
+            }) || null;
+        }
+        return null;
+    };
 
     // 1. OBTENER PRODUCCION NOCHE
     const cabecerasNoche = rowsCabecera.filter(row => {
@@ -126,37 +175,10 @@ export async function GET(req: Request) {
             let matchedMaterialName = "";
             let isProd = false;
 
-            if (rowMatId) {
-                const mat = materialesProductivos.find(m => String(getSupabaseVal(m, "id")) === String(rowMatId));
-                if (mat) {
-                    matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                    isProd = true;
-                }
-            }
-
-            if (!isProd && materialNorm) {
-                const mat = materialesProductivos.find(m => {
-                    const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
-                    return mNameNorm === materialNorm || 
-                           (mNameNorm.length > 3 && materialNorm.length > 3 && (mNameNorm.includes(materialNorm) || materialNorm.includes(mNameNorm)));
-                });
-                if (mat) {
-                    matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                    isProd = true;
-                }
-            }
-            
-            if (!isProd && rowMatId) {
-                const normMatId = cleanName(String(rowMatId));
-                const mat = materialesProductivos.find(m => {
-                    const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
-                    return mNameNorm === normMatId || 
-                           (mNameNorm.length > 3 && normMatId.length > 3 && (mNameNorm.includes(normMatId) || normMatId.includes(mNameNorm)));
-                });
-                if (mat) {
-                    matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
-                    isProd = true;
-                }
+            const mat = findProdMaterial(rowMatId, materialNorm);
+            if (mat) {
+                matchedMaterialName = String(getSupabaseVal(mat, "nombre") || getSupabaseVal(mat, "name") || "").trim();
+                isProd = true;
             }
 
             const targetKey = isProd ? cleanName(matchedMaterialName) : materialNorm;
@@ -215,25 +237,7 @@ export async function GET(req: Request) {
         const productoNorm = cleanName(productoOriginal);
 
         // Find match in ALL materials list from materialesv2 to support non-productive items
-        let matchedMat = null;
-        if (rowMatId) {
-            matchedMat = rowsMateriales.find(m => String(getSupabaseVal(m, "id")) === String(rowMatId));
-        }
-        if (!matchedMat && productoNorm) {
-            matchedMat = rowsMateriales.find(m => {
-                const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
-                return mNameNorm === productoNorm || 
-                       (mNameNorm.length > 3 && productoNorm.length > 3 && (mNameNorm.includes(productoNorm) || productoNorm.includes(mNameNorm)));
-            });
-        }
-        if (!matchedMat && rowMatId) {
-            const normMatId = cleanName(String(rowMatId));
-            matchedMat = rowsMateriales.find(m => {
-                const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
-                return mNameNorm === normMatId || 
-                       (mNameNorm.length > 3 && normMatId.length > 3 && (mNameNorm.includes(normMatId) || normMatId.includes(mNameNorm)));
-            });
-        }
+        const matchedMat = findAllMaterial(rowMatId, productoNorm);
 
         const matchedMaterialName = matchedMat 
             ? String(getSupabaseVal(matchedMat, "nombre") || getSupabaseVal(matchedMat, "name") || "").trim()
@@ -287,14 +291,11 @@ export async function GET(req: Request) {
         items
     };
 
-    cache.set(cacheKey, { data: result, timestamp: now });
-
-    return NextResponse.json(result, {
-        headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30', 'X-Cache': 'MISS' }
-    });
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
 
   } catch (error: any) {
     console.error("Stocks API Error inventario_fisico:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

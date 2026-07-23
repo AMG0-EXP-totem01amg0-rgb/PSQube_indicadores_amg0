@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
-export const dynamic = "force-dynamic";
-
-const CACHE_TTL = 60 * 1000; 
-const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+};
 
 function parseNumber(val: any): number {
     if (typeof val === 'number') return val;
@@ -87,19 +86,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const cacheKey = topParam ? `prod-top-${topParam}` : `prod-${startParam}-${endParam}`;
-    const cachedEntry = cache.get(cacheKey);
-    const now = Date.now();
-
-    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
-       return NextResponse.json(cachedEntry.data, {
-           headers: {
-               'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
-               'X-Cache': 'HIT-MEMORY'
-           }
-       });
-    }
-
     const startDate = startParam ? new Date(startParam + "T00:00:00") : null;
     const endDate = endParam ? new Date(endParam + "T23:59:59") : null;
 
@@ -112,14 +98,26 @@ export async function GET(req: Request) {
         fetchAllRows("paletizadorav2")
     ]);
 
+    // Pre-build O(1) Lookup Maps
+    const paletizadoraMap = new Map<string, any>();
+    rowsPaletizadoras.forEach(p => {
+        const id = getSupabaseVal(p, "id");
+        if (id) paletizadoraMap.set(String(id), p);
+    });
+
+    const turnosMap = new Map<string, any>();
+    rowsTurnos.forEach(t => {
+        const id = getSupabaseVal(t, "id");
+        if (id) turnosMap.set(String(id), t);
+    });
+
     if (topParam) {
         const topCount = parseInt(topParam);
-        
         const dailySums: Record<string, { tn: number, machineId: string, machineName: string, date: string }> = {};
         
         rowsCabecera.forEach(row => {
             const palId = getSupabaseVal(row, "palletizadora_id");
-            const palletizerRow = rowsPaletizadoras.find(p => String(getSupabaseVal(p, "id")) === String(palId));
+            const palletizerRow = palId ? paletizadoraMap.get(String(palId)) : null;
             const maquinaId = palId ? String(palId) : (getSupabaseVal(row, "palletizadora") || "Desconocida");
             const maquinaDesc = palletizerRow ? (getSupabaseVal(palletizerRow, "hac_id") || getSupabaseVal(palletizerRow, "nombre") || maquinaId) : (getSupabaseVal(row, "hac_paletizadora") || maquinaId);
             
@@ -178,8 +176,7 @@ export async function GET(req: Request) {
 
         const finalRecords = combined.sort((a, b) => b.valueTn - a.valueTn);
 
-        cache.set(cacheKey, { data: finalRecords, timestamp: now });
-        return NextResponse.json(finalRecords);
+        return NextResponse.json(finalRecords, { headers: CACHE_HEADERS });
     }
 
     // Filter Cabeceras by Date
@@ -188,10 +185,28 @@ export async function GET(req: Request) {
         return d && startDate && endDate && d.getTime() >= startDate.getTime() && d.getTime() <= endDate.getTime();
     });
 
-    const cabeceraIds = new Set(cabecerasFiltradas.map(r => getSupabaseVal(r, "id")));
+    const cabeceraMap = new Map<string, any>();
+    cabecerasFiltradas.forEach(r => {
+        const id = getSupabaseVal(r, "id");
+        if (id) cabeceraMap.set(String(id), r);
+    });
 
     // Filter detalles_produccionv2 by valid cabecera ids
-    const listaFiltrada = rowsLista.filter(row => cabeceraIds.has(getSupabaseVal(row, "produccion_id")));
+    const listaFiltrada = rowsLista.filter(row => cabeceraMap.has(String(getSupabaseVal(row, "produccion_id"))));
+
+    // Pre-group paros by date string (YYYY-MM-DD) for fast lookup
+    const parosByDateMap = new Map<string, any[]>();
+    rowsParos.forEach(p => {
+        const pDate = getSupabaseVal(p, "FECHA") || getSupabaseVal(p, "fecha");
+        const parsedD = parseSheetDate(pDate);
+        if (parsedD) {
+            const dateStr = parsedD.toISOString().split('T')[0];
+            if (!parosByDateMap.has(dateStr)) {
+                parosByDateMap.set(dateStr, []);
+            }
+            parosByDateMap.get(dateStr)!.push(p);
+        }
+    });
 
     let totalBags = 0;
     let totalTn = 0;
@@ -216,12 +231,12 @@ export async function GET(req: Request) {
 
     cabecerasFiltradas.forEach(row => {
         const palId = getSupabaseVal(row, "palletizadora_id");
-        const palletizerRow = rowsPaletizadoras.find(p => String(getSupabaseVal(p, "id")) === String(palId));
+        const palletizerRow = palId ? paletizadoraMap.get(String(palId)) : null;
         const maquinaId = palId ? String(palId) : (getSupabaseVal(row, "palletizadora") || "Desconocida");
         const maquinaDesc = palletizerRow ? (getSupabaseVal(palletizerRow, "hac_id") || getSupabaseVal(palletizerRow, "nombre") || maquinaId) : (getSupabaseVal(row, "hac_paletizadora") || maquinaId);
 
         const shiftId = getSupabaseVal(row, "turno_id");
-        const shiftRow = rowsTurnos.find(t => String(getSupabaseVal(t, "id")) === String(shiftId));
+        const shiftRow = shiftId ? turnosMap.get(String(shiftId)) : null;
         const turno = getSupabaseVal(row, "descripcion_turno") || (shiftRow ? getSupabaseVal(shiftRow, "name") : null) || "Sin Turno";
         const fecha = getSupabaseVal(row, "fecha") || "Sin Fecha";
         const key = `${maquinaId}|${turno}|${fecha}`;
@@ -236,19 +251,21 @@ export async function GET(req: Request) {
         const duracionTurnoMinutes = duracionTurno * 60;
 
         // Calculate dynamic availability based on actual downtime events (parosv2)
-        const matchedParos = rowsParos.filter(p => {
-            const pDate = getSupabaseVal(p, "FECHA") || getSupabaseVal(p, "fecha");
+        const rowDateObj = parseSheetDate(fecha);
+        const dateStr = rowDateObj ? rowDateObj.toISOString().split('T')[0] : null;
+        const candidateParos = dateStr ? (parosByDateMap.get(dateStr) || []) : [];
+
+        const matchedParos = candidateParos.filter(p => {
             const pMachine = getSupabaseVal(p, "MÁQUINA AFECTADA") || getSupabaseVal(p, "maquina_afectada") || getSupabaseVal(p, "machine_id") || getSupabaseVal(p, "machine");
             const pTurnoId = getSupabaseVal(p, "turno_id");
             const rowTurnoId = getSupabaseVal(row, "turno_id");
 
-            const isDateMatch = sameDate(fecha, pDate);
             const isMachineMatchResult = isMachineMatch(maquinaDesc, pMachine) || isMachineMatch(maquinaId, pMachine);
             const isShiftMatch = (pTurnoId && rowTurnoId)
                 ? String(pTurnoId) === String(rowTurnoId)
                 : normalizeShift(turno) === normalizeShift(getSupabaseVal(p, "TURNO") || getSupabaseVal(p, "turno"));
 
-            return isDateMatch && isMachineMatchResult && isShiftMatch;
+            return isMachineMatchResult && isShiftMatch;
         });
 
         // Split paros into internal and external minutes
@@ -272,15 +289,12 @@ export async function GET(req: Request) {
         let hsMarcha = 0;
 
         if (paroInternoMinutes >= duracionTurnoMinutes) {
-            // Rule 3: If the registered downtime for the whole shift is internal, availability must be 0%
             disponibilidad = 0.0;
             hsMarcha = 0;
         } else if (paroExternoMinutes >= duracionTurnoMinutes) {
-            // Rule 2: If the registered downtime for the whole shift is external, availability must be 100%
             disponibilidad = 1.0;
             hsMarcha = 0;
         } else if (tnHeader === 0) {
-            // Rule 1: If there are no productions registered
             rendimiento = 0.0;
             if (paroInternoMinutes === 0 && paroExternoMinutes === 0) {
                 disponibilidad = 1.0;
@@ -293,7 +307,6 @@ export async function GET(req: Request) {
             }
             hsMarcha = Math.max(0, duracionTurnoMinutes - paroInternoMinutes - paroExternoMinutes) / 60;
         } else {
-            // Standard dynamic calculation
             hsMarcha = (duracionTurnoMinutes - paroInternoMinutes - paroExternoMinutes) / 60;
             if (hsMarcha < 0) hsMarcha = 0;
 
@@ -331,7 +344,7 @@ export async function GET(req: Request) {
         detailsMap[key].count += 1;
     });
 
-    const productionByShiftProduct: Array<{ shift: string; product: string; tonnage: number }> = [];
+    const productionByShiftProductMap = new Map<string, { shift: string; product: string; tonnage: number }>();
 
     listaFiltrada.forEach(row => {
         const idCab = getSupabaseVal(row, "produccion_id");
@@ -339,16 +352,16 @@ export async function GET(req: Request) {
         const tn = parseNumber(getSupabaseVal(row, "tn_producidas"));
         const material = String(getSupabaseVal(row, "descripcion_material") || "Otros").trim();
         
-        const cabecera = cabecerasFiltradas.find(c => getSupabaseVal(c, "id") === idCab);
+        const cabecera = cabeceraMap.get(String(idCab));
         if (!cabecera) return;
 
         const palId = getSupabaseVal(cabecera, "palletizadora_id");
-        const palletizerRow = rowsPaletizadoras.find(p => String(getSupabaseVal(p, "id")) === String(palId));
+        const palletizerRow = palId ? paletizadoraMap.get(String(palId)) : null;
         const maquinaId = palId ? String(palId) : (getSupabaseVal(cabecera, "palletizadora") || "Desconocida");
         const maquinaDesc = palletizerRow ? (getSupabaseVal(palletizerRow, "hac_id") || getSupabaseVal(palletizerRow, "nombre") || maquinaId) : (getSupabaseVal(cabecera, "hac_paletizadora") || maquinaId);
 
         const shiftId = getSupabaseVal(cabecera, "turno_id");
-        const shiftRow = rowsTurnos.find(t => String(getSupabaseVal(t, "id")) === String(shiftId));
+        const shiftRow = shiftId ? turnosMap.get(String(shiftId)) : null;
         const turno = getSupabaseVal(cabecera, "descripcion_turno") || (shiftRow ? getSupabaseVal(shiftRow, "name") : null) || "Sin Turno";
         const fecha = getSupabaseVal(cabecera, "fecha") || "Sin Fecha";
         const key = `${maquinaId}|${turno}|${fecha}`;
@@ -374,14 +387,17 @@ export async function GET(req: Request) {
         if (!machineProductMap[maquinaDesc][material]) machineProductMap[maquinaDesc][material] = 0;
         machineProductMap[maquinaDesc][material] += tn;
 
-        // Group by shift and product
-        const existing = productionByShiftProduct.find(p => p.shift === turno && p.product === material);
+        // Group by shift and product in O(1)
+        const shiftProdKey = `${turno}|${material}`;
+        const existing = productionByShiftProductMap.get(shiftProdKey);
         if (existing) {
             existing.tonnage += tn;
         } else {
-            productionByShiftProduct.push({ shift: turno, product: material, tonnage: tn });
+            productionByShiftProductMap.set(shiftProdKey, { shift: turno, product: material, tonnage: tn });
         }
     });
+
+    const productionByShiftProduct = Array.from(productionByShiftProductMap.values());
 
     const byShift = Object.entries(shiftTotalsTn).map(([name, value]) => ({
         name, 
@@ -435,17 +451,11 @@ export async function GET(req: Request) {
         productionByShiftProduct
     };
 
-    cache.set(cacheKey, { data: result, timestamp: now });
-
-    return NextResponse.json(result, {
-        headers: {
-            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
-            'X-Cache': 'MISS'
-        }
-    });
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
 
   } catch (error: any) {
     console.error("Production API Error produccionv2:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
-export const dynamic = "force-dynamic";
-
-const CACHE_TTL = 60 * 1000; 
-const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+};
 
 const toSafeKey = (str: string) => `id_${str.trim().replace(/[^a-zA-Z0-9]/g, '_')}`;
 
@@ -58,19 +57,6 @@ export async function GET(req: Request) {
 
     if (!startParam || !endParam) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
-    }
-
-    const cacheKey = `breakage-v2-${startParam}-${endParam}`;
-    const cachedEntry = cache.get(cacheKey);
-    const now = Date.now();
-
-    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
-       return NextResponse.json(cachedEntry.data, {
-           headers: {
-               'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
-               'X-Cache': 'HIT-MEMORY'
-           }
-       });
     }
 
     const startDate = new Date(startParam + "T00:00:00");
@@ -231,17 +217,11 @@ export async function GET(req: Request) {
         history 
     };
 
-    cache.set(cacheKey, { data: result, timestamp: now });
-
-    return NextResponse.json(result, {
-        headers: {
-            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
-            'X-Cache': 'MISS'
-        }
-    });
+    return NextResponse.json(result, { headers: CACHE_HEADERS });
 
   } catch (error: any) {
     console.error("Breakage API Error detalles_produccionv2:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+

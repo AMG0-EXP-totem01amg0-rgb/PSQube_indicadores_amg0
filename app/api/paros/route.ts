@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
-export const dynamic = "force-dynamic";
-
-const CACHE_TTL = 30 * 1000; 
-const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+};
 
 function hmsToMinutes(hms: string | null | undefined): number {
   if (!hms) return 0;
@@ -49,12 +48,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing dates" }, { status: 400 });
     }
 
-    const cacheKey = `paros-v2-${startParam}-${endParam}`;
-    const cachedEntry = cache.get(cacheKey);
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp < CACHE_TTL)) {
-       return NextResponse.json(cachedEntry.data);
-    }
-
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
@@ -62,7 +55,7 @@ export async function GET(req: Request) {
     const rows = await fetchAllRows("parosv2");
 
     if (!rows || rows.length === 0) {
-        return NextResponse.json([]);
+        return NextResponse.json([], { headers: CACHE_HEADERS });
     }
 
     const filtrado = rows.filter((r) => {
@@ -91,11 +84,11 @@ export async function GET(req: Request) {
       };
     });
 
-    cache.set(cacheKey, { data: resultados, timestamp: Date.now() });
-    return NextResponse.json(resultados);
+    return NextResponse.json(resultados, { headers: CACHE_HEADERS });
 
   } catch (err: any) {
     console.error("API Error parosv2:", err);
     return NextResponse.json({ error: "Error" }, { status: 500 });
   }
 }
+

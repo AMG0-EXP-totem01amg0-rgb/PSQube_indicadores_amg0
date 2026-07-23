@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
-export const dynamic = "force-dynamic";
-
-const CACHE_TTL = 60 * 1000;
-const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_HEADERS = {
+  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+};
 
 function parseNumber(val: any): number {
     if (typeof val === 'number') return val;
@@ -50,13 +49,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const cacheKey = `despachos-${startParam}-${endParam}`;
-    const cachedEntry = cache.get(cacheKey);
-    const now = Date.now();
-    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_TTL)) {
-       return NextResponse.json(cachedEntry.data);
-    }
-
     const startDate = new Date(startParam + "T00:00:00");
     const endDate = new Date(endParam + "T23:59:59");
 
@@ -70,10 +62,17 @@ export async function GET(req: Request) {
         fetchAllRows("materialesv2")
     ]);
 
-    // Pre-process materials for faster lookup and categorization
-    const materialsMap = new Map();
+    // Pre-process materials for O(1) lookup and categorization
+    const materialsMap = new Map<string, any>();
+    const materialsByNormName = new Map<string, any>();
+
     rowsMateriales.forEach(m => {
-        materialsMap.set(String(getSupabaseVal(m, "id")), m);
+        const id = getSupabaseVal(m, "id");
+        if (id) materialsMap.set(String(id), m);
+
+        const name = String(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "").trim();
+        const norm = cleanName(name);
+        if (norm) materialsByNormName.set(norm, m);
     });
 
     const checkTrue = (val: any) => {
@@ -105,10 +104,9 @@ export async function GET(req: Request) {
         }
         if (!matchedMat && rawMaterialName) {
             const nameNorm = cleanName(rawMaterialName);
-            matchedMat = rowsMateriales.find(m => {
+            matchedMat = materialsByNormName.get(nameNorm) || rowsMateriales.find(m => {
                 const mNameNorm = cleanName(getSupabaseVal(m, "nombre") || getSupabaseVal(m, "name") || "");
-                return mNameNorm === nameNorm || 
-                       (mNameNorm.length > 3 && nameNorm.length > 3 && (mNameNorm.includes(nameNorm) || nameNorm.includes(mNameNorm)));
+                return mNameNorm.length > 3 && nameNorm.length > 3 && (mNameNorm.includes(nameNorm) || nameNorm.includes(mNameNorm));
             });
         }
 
@@ -309,10 +307,9 @@ export async function GET(req: Request) {
         details
     };
 
-    cache.set(cacheKey, { data: responseData, timestamp: now });
-
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, { headers: CACHE_HEADERS });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
