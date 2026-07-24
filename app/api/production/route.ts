@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
 
+export const dynamic = "force-dynamic";
+
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
 };

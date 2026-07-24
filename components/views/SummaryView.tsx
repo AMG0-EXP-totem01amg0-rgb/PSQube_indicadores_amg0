@@ -904,9 +904,6 @@ export const SummaryView: React.FC<{
                                 <Weight className="text-white" size={20} />
                                 <h3 className="font-black text-white uppercase text-[11px] tracking-[0.2em]">Resumen de Despachos (Expedición)</h3>
                             </div>
-                            <span className="text-[10px] bg-sky-950/40 border border-sky-400/30 px-2.5 py-0.5 rounded font-black text-sky-200 uppercase tracking-widest">
-                                despachosv2
-                            </span>
                         </div>
                         <div className="p-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
