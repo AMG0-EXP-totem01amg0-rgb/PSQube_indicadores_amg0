@@ -9,7 +9,7 @@ import { DowntimeView } from '../components/views/DowntimeView';
 import { PalletizerView } from '../components/views/PalletizerView';
 import { BreakageView } from '../components/views/BreakageView';
 import { DailyTimelineView } from '../components/views/DailyTimelineView';
-import { MonitorView } from '../components/views/MonitorView';
+import { KioskContainer } from '../components/KioskContainer';
 import { RankingsView } from '../components/views/RankingsView';
 import { AdminPanel } from '../components/AdminPanel';
 import { useUser, UserButton, SignOutButton } from '@clerk/nextjs';
@@ -88,7 +88,7 @@ function App() {
       case 'palletizers': return <PalletizerView />;
       case 'breakage': return <BreakageView />;
       case 'rankings': return <RankingsView />;
-      case 'monitor': return <MonitorView onBack={() => setCurrentView('home')} dateRange={dateRange} setDateRange={setDateRange} />;
+      case 'monitor': return <KioskContainer onBack={() => setCurrentView('home')} />;
       case 'admin': return canAccessAdmin ? <AdminPanel /> : <SummaryView dateRange={dateRange} setDateRange={setDateRange} />;
       default: return <SummaryView dateRange={dateRange} setDateRange={setDateRange} />;
     }
