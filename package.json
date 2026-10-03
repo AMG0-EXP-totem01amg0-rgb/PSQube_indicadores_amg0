@@ -13,6 +13,7 @@
     "@google/genai": "^1.46.0",
     "@supabase/supabase-js": "^2.108.2",
     "@tanstack/react-query": "^5.95.2",
+    "cheerio": "^1.2.0",
     "clsx": "^2.1.1",
     "google-auth-library": "^9.10.0",
     "google-spreadsheet": "^4.1.1",
