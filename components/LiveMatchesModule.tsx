@@ -132,7 +132,7 @@ export const LiveMatchesModule = () => {
                     <span className="text-base lg:text-lg font-black text-white tracking-tighter drop-shadow-2xl">{match.awayScore}</span>
                   </div>
                   <div className="text-red-500 text-[8px] lg:text-[10px] font-black tracking-widest uppercase flex items-center gap-1 animate-pulse mt-0.5">
-                    🔴 EN VIVO • {match.liveMinute}'
+                    🔴 EN VIVO • {match.liveMinute}&apos;
                   </div>
                 </div>
               )}
