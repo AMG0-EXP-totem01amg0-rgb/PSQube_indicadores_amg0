@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { fetchRowsByDateRange, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
+
+const CACHE_TTL = 60 * 1000;
+const cache = new Map<string, { data: any; timestamp: number }>();
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
@@ -34,13 +36,36 @@ function formatTimeToHHmm(timeStr: any): string {
     return "00:00";
 }
 
-const getCachedParosData = unstable_cache(
-  async (startParam: string, endParam: string, startDate: Date, endDate: Date) => {
+export async function GET(req: Request) {
+  try {
+    const { userId } = auth();
+    if (!userId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const startParam = searchParams.get("start"); 
+    const endParam = searchParams.get("end");
+
+    if (!startParam || !endParam) {
+      return NextResponse.json({ error: "Missing dates" }, { status: 400 });
+    }
+
+    const startDate = new Date(startParam + "T00:00:00");
+    const endDate = new Date(endParam + "T23:59:59");
+
+    // Check in-memory cache
+    const cacheKey = `paros-v2-${startParam}-${endParam}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data, { headers: CACHE_HEADERS });
+    }
+
     // Fetch only the requested date range from Supabase (server-side filter)
     const rows = await fetchRowsByDateRange("parosv2", "fecha", startParam, endParam);
 
     if (!rows || rows.length === 0) {
-        return [];
+        return NextResponse.json([], { headers: CACHE_HEADERS });
     }
 
     // rowsParos are already date-filtered by Supabase; JS re-filter kept as safety guard
@@ -70,32 +95,7 @@ const getCachedParosData = unstable_cache(
       };
     });
 
-    return resultados;
-  },
-  ['paros-data-v2'],
-  { revalidate: 300, tags: ['paros'] }
-);
-
-export async function GET(req: Request) {
-  try {
-    const { userId } = auth();
-    if (!userId) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const startParam = searchParams.get("start"); 
-    const endParam = searchParams.get("end");
-
-    if (!startParam || !endParam) {
-      return NextResponse.json({ error: "Missing dates" }, { status: 400 });
-    }
-
-    const startDate = new Date(startParam + "T00:00:00");
-    const endDate = new Date(endParam + "T23:59:59");
-
-    const resultados = await getCachedParosData(startParam, endParam, startDate, endDate);
-
+    cache.set(cacheKey, { data: resultados, timestamp: Date.now() });
     return NextResponse.json(resultados, { headers: CACHE_HEADERS });
 
   } catch (err: any) {

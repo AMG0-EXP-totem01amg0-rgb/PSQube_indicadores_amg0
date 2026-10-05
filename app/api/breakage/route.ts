@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { fetchRowsByDateRange, fetchRowsByIds, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
+
+const CACHE_TTL = 60 * 1000;
+const cache = new Map<string, { data: any; timestamp: number }>();
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
@@ -45,8 +47,31 @@ function parseNumber(val: any): number {
     return parseFloat(str) || 0;
 }
 
-const getCachedBreakageData = unstable_cache(
-  async (startParam: string, endParam: string, startDate: Date, endDate: Date) => {
+export async function GET(req: Request) {
+  try {
+    const { userId } = auth();
+    if (!userId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const startParam = searchParams.get("start"); 
+    const endParam = searchParams.get("end");
+
+    if (!startParam || !endParam) {
+      return NextResponse.json({ error: "Missing date params" }, { status: 400 });
+    }
+
+    const startDate = new Date(startParam + "T00:00:00");
+    const endDate = new Date(endParam + "T23:59:59");
+
+    // Check in-memory cache
+    const cacheKey = `breakage-v2-${startParam}-${endParam}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data, { headers: CACHE_HEADERS });
+    }
+
     // Filter produccionv2 by date in Supabase, then load only relevant detalles
     const rowsCabecera = await fetchRowsByDateRange("produccionv2", "fecha", startParam, endParam);
     const cabeceraIdsList = rowsCabecera.map(r => getSupabaseVal(r, "id")).filter(Boolean);
@@ -170,7 +195,7 @@ const getCachedBreakageData = unstable_cache(
         return da - db;
     });
 
-    return {
+    const result = {
         totalProduced,
         totalBroken,
         globalRate: totalProduced > 0 ? (totalBroken / totalProduced) * 100 : 0,
@@ -203,30 +228,6 @@ const getCachedBreakageData = unstable_cache(
         
         history 
     };
-  },
-  ['breakage-data-v2'],
-  { revalidate: 300, tags: ['breakage'] }
-);
-
-export async function GET(req: Request) {
-  try {
-    const { userId } = auth();
-    if (!userId) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const startParam = searchParams.get("start"); 
-    const endParam = searchParams.get("end");
-
-    if (!startParam || !endParam) {
-      return NextResponse.json({ error: "Missing date params" }, { status: 400 });
-    }
-
-    const startDate = new Date(startParam + "T00:00:00");
-    const endDate = new Date(endParam + "T23:59:59");
-
-    const result = await getCachedBreakageData(startParam, endParam, startDate, endDate);
 
     return NextResponse.json(result, { headers: CACHE_HEADERS });
 
