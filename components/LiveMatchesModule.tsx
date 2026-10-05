@@ -44,7 +44,7 @@ export const LiveMatchesModule = () => {
     };
 
     fetchMatches();
-    const pollInterval = setInterval(fetchMatches, 60000); // refresh every minute
+    const pollInterval = setInterval(fetchMatches, 300000); // refresh every 5 minutes
     return () => clearInterval(pollInterval);
   }, []);
 

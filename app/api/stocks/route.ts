@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { fetchAllRows, fetchRowsByDateRange, fetchRowsByIds, getSupabaseVal, parseSheetDate } from "../../../lib/supabase";
-
-const CACHE_TTL = 60 * 1000;
-const cache = new Map<string, { data: any; timestamp: number }>();
+import { unstable_cache } from 'next/cache';
 
 const CACHE_HEADERS = {
-  'Cache-Control': 'public, max-age=30, s-maxage=120, stale-while-revalidate=300'
+  'Cache-Control': 'public, max-age=60, s-maxage=600, stale-while-revalidate=1200'
 };
 
 function parseNumber(val: any): number {
@@ -54,27 +52,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Missing date params" }, { status: 400 });
     }
 
-    const startDate = new Date(startParam + "T00:00:00");
-    const endDate = new Date(endParam + "T23:59:59");
+    const getCachedStocks = unstable_cache(
+      async (startStr: string, endStr: string) => {
+        const startDate = new Date(startStr + "T00:00:00");
+        const endDate = new Date(endStr + "T23:59:59");
 
-    // Check in-memory cache
-    const cacheKey = `stocks-v2-${startParam}-${endParam}`;
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data, { headers: CACHE_HEADERS });
-    }
+        // Reference tables (small, static) — fetch full
+        const [rowsTurnos, rowsMateriales] = await Promise.all([
+            fetchAllRows("turnosv2"),
+            fetchAllRows("materialesv2")
+        ]);
 
-    // Reference tables (small, static) — fetch full
-    const [rowsTurnos, rowsMateriales] = await Promise.all([
-        fetchAllRows("turnosv2"),
-        fetchAllRows("materialesv2")
-    ]);
-
-    // Date-sensitive tables — filter in Supabase
-    const [rowsConteo, rowsCabecera] = await Promise.all([
-        fetchRowsByDateRange("inventario_fisicov2", "fecha", startParam, endParam),
-        fetchRowsByDateRange("produccionv2", "fecha", startParam, endParam),
-    ]);
+        // Date-sensitive tables — filter in Supabase
+        const [rowsConteo, rowsCabecera] = await Promise.all([
+            fetchRowsByDateRange("inventario_fisicov2", "fecha", startStr, endStr),
+            fetchRowsByDateRange("produccionv2", "fecha", startStr, endStr),
+        ]);
 
     // Load detalles only for the filtered cabecera IDs (noche shift detection happens below)
     const cabeceraIdsList = rowsCabecera.map(r => getSupabaseVal(r, "id")).filter(Boolean);
@@ -236,7 +229,7 @@ export async function GET(req: Request) {
             qty: 0,
             tn: 0,
             isProduced: true,
-            date: startParam
+            date: startStr
         };
     });
 
@@ -274,7 +267,7 @@ export async function GET(req: Request) {
                 qty: 0, 
                 tn: 0, 
                 isProduced: isProd, 
-                date: String(fecha || startParam)
+                date: String(fecha || startStr)
             };
         }
         stockMap[normKey].qty += cantidad;
@@ -304,11 +297,17 @@ export async function GET(req: Request) {
     }));
 
     const result = {
-        date: items[0]?.lastUpdated || startParam,
+        date: items[0]?.lastUpdated || startStr,
         items
     };
 
-    cache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+      },
+      ['stocks-cache-tag'],
+      { revalidate: 600 }
+    );
+
+    const result = await getCachedStocks(startParam, endParam);
     return NextResponse.json(result, { headers: CACHE_HEADERS });
 
   } catch (error: any) {

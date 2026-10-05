@@ -1,4 +1,4 @@
-// File: C:\Users\Usuario\Downloads\PSQube_indicadores_amg0-main\PSQube_indicadores_amg0-main\app\layout.tsx
+// File: C:\Users\jleguizamon\OneDrive - IRSACORP\Escritorio\Plegma\Holcim\PSQube_indicadores_amg0-main\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
-export const revalidate = 60; // Revalidate every minute
+export const revalidate = 900; // Revalidate every 15 minutes
 
 export async function GET() {
   try {
-    const response = await fetch('https://ruta1000.com.ar/index2008.php', { cache: 'no-store' });
+    const response = await fetch('https://ruta1000.com.ar/index2008.php');
     const buffer = await response.arrayBuffer();
     const decoder = new TextDecoder('iso-8859-1');
     const html = decoder.decode(buffer);
@@ -68,7 +68,7 @@ export async function GET() {
     };
 
     try {
-      const qRes = await fetch('http://quini6.ruta1000.com.ar/', { cache: 'no-store' });
+      const qRes = await fetch('http://quini6.ruta1000.com.ar/');
       if (qRes.ok) {
         const qBuffer = await qRes.arrayBuffer();
         const qHtml = decoder.decode(qBuffer);
@@ -102,7 +102,14 @@ export async function GET() {
       console.log('Quini error', err);
     }
     
-    return NextResponse.json({ ...results, quini6 });
+    return NextResponse.json(
+      { ...results, quini6 },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=1800'
+        }
+      }
+    );
   } catch (error) {
     console.error('Error fetching lottery data:', error);
     return NextResponse.json({ error: 'Failed to fetch lottery data' }, { status: 500 });

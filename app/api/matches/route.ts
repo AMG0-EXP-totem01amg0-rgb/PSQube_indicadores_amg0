@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 60; // Every 1 minute
+export const revalidate = 300; // Every 5 minutes
 
 export async function GET() {
   try {
@@ -21,9 +21,7 @@ export async function GET() {
     
     const fetchPromises = leagues.map(async (league) => {
       try {
-        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league.id}/scoreboard?limit=50`, {
-          cache: 'no-store'
-        });
+        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${league.id}/scoreboard?limit=50`);
         if (!res.ok) return null;
         const data = await res.json();
         if (data && Array.isArray(data.events)) {
@@ -87,7 +85,11 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ matches });
+    return NextResponse.json({ matches }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600'
+      }
+    });
   } catch (error) {
     console.error('Error fetching matches:', error);
     return NextResponse.json({ matches: [] }); // Fallback to empty array to prevent frontend crash

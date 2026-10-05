@@ -1,4 +1,4 @@
-// File: C:\Users\Usuario\Downloads\PSQube_indicadores_amg0-main\PSQube_indicadores_amg0-main\app\api\paros\route.ts
+// File: C:\Users\jleguizamon\OneDrive - IRSACORP\Escritorio\Plegma\Holcim\PSQube_indicadores_amg0-main\app\api\paros\route.ts
 import * as entry from '../../../../../app/api/paros/route.js'
 import type { NextRequest } from 'next/server.js'
 

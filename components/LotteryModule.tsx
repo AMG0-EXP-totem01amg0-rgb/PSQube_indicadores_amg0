@@ -25,7 +25,7 @@ export const LotteryModule = () => {
     };
 
     fetchLottery();
-    const interval = setInterval(fetchLottery, 60000); // Refresh every minute
+    const interval = setInterval(fetchLottery, 900000); // Refresh every 15 minutes
     return () => clearInterval(interval);
   }, []);
 

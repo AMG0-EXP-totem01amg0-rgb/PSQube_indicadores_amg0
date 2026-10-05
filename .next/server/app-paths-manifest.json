@@ -1,10 +1,13 @@
 {
-  "/sign-in/[[...sign-in]]/page": "app/sign-in/[[...sign-in]]/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js",
-  "/api/despachos/route": "app/api/despachos/route.js",
-  "/api/breakage/route": "app/api/breakage/route.js",
-  "/api/stocks/route": "app/api/stocks/route.js",
   "/api/paros/route": "app/api/paros/route.js",
+  "/api/breakage/route": "app/api/breakage/route.js",
   "/api/production/route": "app/api/production/route.js",
-  "/api/rankings/route": "app/api/rankings/route.js"
+  "/api/stocks/route": "app/api/stocks/route.js",
+  "/api/rankings/route": "app/api/rankings/route.js",
+  "/api/despachos/route": "app/api/despachos/route.js",
+  "/api/lottery/route": "app/api/lottery/route.js",
+  "/api/matches/route": "app/api/matches/route.js",
+  "/icon.jpg/route": "app/icon.jpg/route.js"
 }
