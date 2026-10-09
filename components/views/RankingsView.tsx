@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchRankings, fetchDowntimes } from '../../services/sheetService';
 import { DateFilter } from '../DateFilter';
-import { Trophy, Clock, AlertTriangle, Users, Box, Hammer, Settings2, BarChart3, TrendingUp, Hash, Percent, ChevronRight, ChevronDown, X, Check, Calendar, Search } from 'lucide-react';
+import { Trophy, Clock, AlertTriangle, Users, Box, Hammer, Settings2, BarChart3, TrendingUp, Hash, Percent, ChevronRight, ChevronDown, X, Check, Calendar, Search, Network } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 type RankingType = 'production' | 'downtime';
@@ -69,7 +69,7 @@ function LeaderboardItem({ rank, name, value, max, unit, percentage, colorClass 
       
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-end mb-2">
-          <div className="truncate pr-4" title={name}>
+          <div className="pr-4 line-clamp-2" title={name}>
             <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">{name}</span>
           </div>
           <div className="text-right shrink-0">
@@ -676,7 +676,7 @@ export function RankingsView() {
                   </div>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Causes */}
                   <div className="bg-slate-900/30 border border-slate-800/50 rounded-[3rem] p-8 shadow-xl">
                      <div className="flex items-center gap-3 mb-8">
@@ -786,7 +786,7 @@ export function RankingsView() {
                  <div className="flex items-center justify-between mb-10">
                     <h2 className="text-3xl font-black text-white tracking-tighter flex items-center gap-4">
                         <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
-                            <CombineIcon className="text-emerald-500" size={28} />
+                            <Network className="text-emerald-500" size={28} />
                         </div>
                         CRUCES DE INFORMACIÓN <span className="text-slate-600">INTELIGENTES</span>
                     </h2>
@@ -820,15 +820,7 @@ export function RankingsView() {
   );
 }
 
-function CombineIcon({ className, size }: { className: string, size: number }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
-            <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 7 7v3.5a2.5 2.5 0 0 1-5 0V11a2 2 0 1 0-4 0v11" />
-            <path d="M7 11V5.5a2.5 2.5 0 0 1 5 0V12a2 2 0 1 1-4 0V5" />
-            <circle cx="12" cy="12" r="10" strokeOpacity="0.1" />
-        </svg>
-    )
-}
+
 
 function CombineSection({ title, data: rawData, metric, icon: Icon, color }: any) {
     const data = [...rawData].sort((a,b) => b[metric] - a[metric]);

@@ -111,10 +111,13 @@ export async function GET(req: Request) {
     let rowsParos: any[];
 
     if (topParam) {
-      // Top-records mode needs full history; keep fetchAllRows
+      const cabeceraPromise = startParam && endParam
+          ? fetchRowsByDateRange("produccionv2", "fecha", startParam, endParam)
+          : fetchAllRows("produccionv2");
+
       [rowsCabecera, rowsLista, rowsParos] = await Promise.all([
-          fetchAllRows("produccionv2"),
-          Promise.resolve([]), // not needed for topParam branch
+          cabeceraPromise,
+          Promise.resolve([]),
           Promise.resolve([]),
       ]);
     } else {

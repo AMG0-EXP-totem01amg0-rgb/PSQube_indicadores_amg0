@@ -130,9 +130,13 @@ export const fetchRankings = async (start: Date, end: Date, operators?: string[]
     }
 };
 
-export const fetchTopRecords = async (count: number = 3): Promise<any[]> => {
+export const fetchTopRecords = async (count: number = 3, start?: Date, end?: Date): Promise<any[]> => {
     try {
-        const res = await fetch(`/api/production?top=${count}`);
+        let url = `/api/production?top=${count}`;
+        if (start && end) {
+            url += `&start=${toLocalISO(start)}&end=${toLocalISO(end)}`;
+        }
+        const res = await fetch(url);
         if (!res.ok) return [];
         return await res.json();
     } catch (error) {
@@ -175,3 +179,13 @@ export const fetchDespachos = async (start: Date, end: Date): Promise<DespachoSt
     }
 };
 
+export const fetchNotificaciones = async (): Promise<any[]> => {
+    try {
+        const res = await fetch(`/api/notificaciones`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch (error) {
+        console.error("Error al obtener notificaciones:", error);
+        return [];
+    }
+};

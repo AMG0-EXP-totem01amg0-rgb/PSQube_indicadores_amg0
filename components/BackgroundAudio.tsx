@@ -4,18 +4,13 @@ import { Play, Pause } from 'lucide-react';
 
 export const BackgroundAudio = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = 0.4;
-      const playPromise = audioRef.current.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((e) => {
-          console.error("Audio auto-play prevented:", e);
-          setIsPlaying(false);
-        });
-      }
+      // El autoplay se bloquea por defecto en los navegadores modernos,
+      // por lo que iniciamos pausado para que el estado sea consistente.
     }
   }, []);
 
@@ -36,7 +31,6 @@ export const BackgroundAudio = () => {
         ref={audioRef} 
         src="https://playerservices.streamtheworld.com/api/livestream-redirect/LAPOPUAAC.aac" 
         preload="none" 
-        autoPlay
         loop 
       />
 

@@ -140,3 +140,23 @@ export const WeeklyWeather = () => {
     </div>
   );
 };
+
+export const CompactWeather = () => {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['weather-malagueno-widget'],
+    queryFn: fetchRealWeather,
+    refetchInterval: 1800000,
+  });
+
+  if (isLoading || isError || !data) return null;
+
+  return (
+    <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5">
+      {getWeatherDetails(data.current.code, 24)}
+      <div className="flex flex-col text-left">
+        <span className="text-sm lg:text-base font-black text-white leading-none">{data.current.temp}°C</span>
+        <span className="text-[8px] lg:text-[9px] text-slate-400 font-bold tracking-widest uppercase leading-none mt-0.5">Malagueño</span>
+      </div>
+    </div>
+  );
+};

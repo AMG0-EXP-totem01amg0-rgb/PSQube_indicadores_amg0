@@ -3,14 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchProductionStats } from '../services/sheetService';
 import { RotatingMetrics } from './RotatingMetrics';
-import { WeeklyWeather } from './WeeklyWeather';
+import { WeeklyWeather, CompactWeather } from './WeeklyWeather';
 import { AutoExpandNews } from './AutoExpandNews';
 import { LotteryModule } from './LotteryModule';
 import { LiveMatchesModule } from './LiveMatchesModule';
 import { FlipSlot } from './FlipSlot';
 import { BackgroundAudio } from './BackgroundAudio';
-import { LayoutDashboard, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import { NotificationMediaOverlay, useNotifications } from './NotificationOverlay';
 
 const isMachineMatch = (id1: string, id2: string) => {
   if (!id1 || !id2) return false;
@@ -58,6 +60,8 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+
 
   // Top Bar Data
   const [dateRange] = useState(() => {
@@ -162,6 +166,20 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
     }).filter(m => m.name.includes('672') || m.name.includes('673') || m.name.includes('674'));
   }, [prodData, downtimeResult]);
 
+  const { activeTextNotifications } = useNotifications();
+
+  const [showTextNotificationView, setShowTextNotificationView] = useState(false);
+
+  useEffect(() => {
+    if (activeTextNotifications.length === 0) {
+      setShowTextNotificationView(false);
+      return;
+    }
+    const timer = setInterval(() => {
+      setShowTextNotificationView(prev => !prev);
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [activeTextNotifications.length]);
   const [scale, setScale] = useState(1);
   const targetWidth = 1920;
   const targetHeight = 1080;
@@ -188,6 +206,7 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
 
   return (
     <div className="fixed inset-0 w-full h-screen bg-[#050B14] overflow-hidden flex items-center justify-center z-[100]">
+      <NotificationMediaOverlay />
       <div 
         className="flex flex-col bg-[#050B14] text-white font-sans shrink-0 origin-center relative"
         style={{ 
@@ -213,10 +232,14 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
             </h1>
           </div>
           
-          {/* Center: Clock & Date */}
-          <div className="text-center flex-1">
-            <h2 className="text-2xl lg:text-3xl font-black tracking-tighter leading-none">{formattedTime}</h2>
-            <p className="text-[8px] lg:text-[9px] text-blue-400 font-bold tracking-[0.2em] mt-0.5">{formattedDate}</p>
+          {/* Center: Clock, Date & Weather */}
+          <div className="flex justify-center items-center gap-6 flex-1">
+            <div className="text-right">
+              <h2 className="text-2xl lg:text-3xl font-black tracking-tighter leading-none">{formattedTime}</h2>
+              <p className="text-[8px] lg:text-[9px] text-blue-400 font-bold tracking-[0.2em] mt-0.5">{formattedDate}</p>
+            </div>
+            <div className="w-[1px] h-8 bg-white/10"></div>
+            <CompactWeather />
           </div>
           
           {/* Right: Radio Pill */}
@@ -250,8 +273,35 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
       </div>
 
       {/* MIDDLE ROW: OPERATIONAL CARDS */}
-      <div className="flex-[2] min-h-0 flex items-center justify-center py-4 relative z-20">
-        <RotatingMetrics />
+      <div className="flex-[2] min-h-0 relative z-20 w-full overflow-hidden py-4">
+        <div 
+          className="h-full flex transition-transform duration-1000 ease-in-out"
+          style={{ 
+            width: activeTextNotifications.length > 0 ? '200%' : '100%', 
+            transform: `translateX(${showTextNotificationView && activeTextNotifications.length > 0 ? '-50%' : '0%'})` 
+          }}
+        >
+            <div className={`${activeTextNotifications.length > 0 ? 'w-1/2' : 'w-full'} h-full shrink-0`}>
+                <RotatingMetrics />
+            </div>
+            
+            {activeTextNotifications.length > 0 && (
+              <div className="w-1/2 h-full shrink-0 px-4">
+                  <div className="w-full h-full bg-gradient-to-br from-indigo-900/80 to-purple-900/30 backdrop-blur-md rounded-2xl border border-indigo-500/30 p-8 shadow-[0_0_40px_rgba(79,70,229,0.15)] flex flex-col justify-center relative overflow-hidden mx-auto max-w-[120rem]">
+                      <div className="absolute top-0 right-0 p-8 opacity-10">
+                          <AlertCircle size={200} />
+                      </div>
+                      <h2 className="text-3xl lg:text-4xl font-black text-indigo-400 mb-6 uppercase tracking-widest flex items-center gap-4">
+                          <AlertCircle size={40} className="animate-pulse" />
+                          {activeTextNotifications[0].title || 'Aviso Importante'}
+                      </h2>
+                      <p className="text-white text-3xl lg:text-5xl leading-relaxed font-bold z-10">
+                          {activeTextNotifications[0].content}
+                      </p>
+                  </div>
+              </div>
+            )}
+        </div>
       </div>
 
       {/* BOTTOM ROW: INFORMATIVE GRID WITH FLIP CARDS */}
@@ -267,10 +317,7 @@ export const KioskContainer: React.FC<KioskContainerProps> = ({ onBack }) => {
 
         {/* Right Column (50%): Weather & Lottery */}
         <div className="col-span-1 h-full min-h-0">
-          <FlipSlot interval={60000}>
-            <WeeklyWeather />
-            <LotteryModule />
-          </FlipSlot>
+          <LotteryModule />
         </div>
 
       </div>
