@@ -2,48 +2,123 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Pause } from 'lucide-react';
 
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
+
 export const BackgroundAudio = () => {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const playerRef = useRef<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = 0.4;
-      // El autoplay se bloquea por defecto en los navegadores modernos,
-      // por lo que iniciamos pausado para que el estado sea consistente.
+    let isMounted = true;
+
+    const initPlayer = () => {
+      if (!window.YT || !window.YT.Player) return;
+      if (playerRef.current) return;
+
+      try {
+        playerRef.current = new window.YT.Player('yt-radio-player', {
+          height: '1',
+          width: '1',
+          videoId: 'k9bMyNGsmhU',
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            playsinline: 1,
+            rel: 0,
+            origin: typeof window !== 'undefined' ? window.location.origin : undefined
+          },
+          events: {
+            onReady: (event: any) => {
+              if (!isMounted) return;
+              try {
+                event.target.setVolume(50);
+              } catch (e) {}
+            },
+            onStateChange: (event: any) => {
+              if (!isMounted) return;
+              // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+              if (event.data === 1) {
+                setIsPlaying(true);
+              } else if (event.data === 2 || event.data === 0) {
+                setIsPlaying(false);
+              }
+            },
+            onError: (err: any) => {
+              console.warn('YouTube radio stream error:', err);
+              if (isMounted) setIsPlaying(false);
+            }
+          }
+        });
+      } catch (err) {
+        console.warn('Failed to initialize YouTube radio player:', err);
+      }
+    };
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      const prevOnReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (prevOnReady) prevOnReady();
+        initPlayer();
+      };
+
+      if (!document.getElementById('yt-iframe-api')) {
+        const tag = document.createElement('script');
+        tag.id = 'yt-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(tag);
+      }
     }
+
+    return () => {
+      isMounted = false;
+      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+        playerRef.current = null;
+      }
+    };
   }, []);
 
   const togglePlay = () => {
-    if (audioRef.current) {
+    if (!playerRef.current) return;
+    try {
       if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
+        playerRef.current.pauseVideo();
       } else {
-        audioRef.current.play().then(() => {
-          setIsPlaying(true);
-        }).catch((err) => {
-          console.warn("Audio play prevented or blocked:", err);
-          setIsPlaying(false);
-        });
+        playerRef.current.playVideo();
       }
+    } catch (err) {
+      console.warn('Error toggling YouTube radio:', err);
     }
   };
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 bg-[#0f172a]/90 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl text-white transition-all hover:bg-[#0f172a] hover:border-white/20">
-      <audio 
-        ref={audioRef} 
-        src="https://playerservices.streamtheworld.com/api/livestream-redirect/lapopu.mp3" 
-        preload="none" 
-        loop
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onError={() => {
-          console.warn("Audio stream unavailable or blocked by network policy");
-          setIsPlaying(false);
+      {/* Hidden YouTube audio element */}
+      <div 
+        style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden',
+          opacity: 0,
+          pointerEvents: 'none'
         }}
-      />
+        aria-hidden="true"
+      >
+        <div id="yt-radio-player" />
+      </div>
 
       {/* Logo */}
       <div className="w-8 h-8 rounded-full overflow-hidden bg-white flex items-center justify-center shrink-0 shadow-inner">
@@ -86,9 +161,11 @@ export const BackgroundAudio = () => {
       <button 
         onClick={togglePlay}
         className="w-8 h-8 bg-white text-slate-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform shrink-0 shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+        title={isPlaying ? 'Pausar radio' : 'Reproducir radio'}
       >
         {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
       </button>
     </div>
   );
 };
+
