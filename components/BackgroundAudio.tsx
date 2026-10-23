@@ -18,10 +18,15 @@ export const BackgroundAudio = () => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
+        setIsPlaying(false);
       } else {
-        audioRef.current.play();
+        audioRef.current.play().then(() => {
+          setIsPlaying(true);
+        }).catch((err) => {
+          console.warn("Audio play prevented or blocked:", err);
+          setIsPlaying(false);
+        });
       }
-      setIsPlaying(!isPlaying);
     }
   };
 
@@ -29,9 +34,15 @@ export const BackgroundAudio = () => {
     <div className="flex items-center gap-3 px-3 py-2 bg-[#0f172a]/90 backdrop-blur-xl border border-white/10 rounded-full shadow-2xl text-white transition-all hover:bg-[#0f172a] hover:border-white/20">
       <audio 
         ref={audioRef} 
-        src="https://playerservices.streamtheworld.com/api/livestream-redirect/LAPOPUAAC.aac" 
+        src="https://playerservices.streamtheworld.com/api/livestream-redirect/lapopu.mp3" 
         preload="none" 
-        loop 
+        loop
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onError={() => {
+          console.warn("Audio stream unavailable or blocked by network policy");
+          setIsPlaying(false);
+        }}
       />
 
       {/* Logo */}

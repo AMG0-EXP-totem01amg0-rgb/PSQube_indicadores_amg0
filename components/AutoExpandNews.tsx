@@ -12,47 +12,15 @@ interface NewsItem {
 }
 
 const fetchNews = async (): Promise<NewsItem[]> => {
-  // Fetch from two reliable feeds (News and Sports)
-  const rssNews = 'https://www.clarin.com/rss/lo-ultimo/';
-  const rssSports = 'https://www.ole.com.ar/rss/'; // Sports
-  
   try {
-    const [resNews, resSports] = await Promise.all([
-      fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssNews)}`),
-      fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssSports)}`)
-    ]);
-    
-    const dataNews = await resNews.json();
-    const dataSports = await resSports.json();
-    
-    let combined: NewsItem[] = [];
-
-    const parseItems = (items: any[], source: string, category: string) => {
-      if (!items) return [];
-      return items.slice(0, 10).map((item: any) => {
-        let imgUrl = 'https://images.unsplash.com/photo-1541888086225-ee5933d3bb7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80';
-        if (item.enclosure && item.enclosure.link) imgUrl = item.enclosure.link;
-        else if (item.thumbnail) imgUrl = item.thumbnail;
-        else if (item.content && item.content.includes('<img')) {
-          const match = item.content.match(/src="([^"]+)"/);
-          if (match) imgUrl = match[1];
-        } else if (item.description && item.description.includes('<img')) {
-          const match = item.description.match(/src="([^"]+)"/);
-          if (match) imgUrl = match[1];
-        }
-
-        const cleanExcerpt = item.description.replace(/<[^>]+>/g, '').substring(0, 200) + '...';
-        return { title: item.title, excerpt: cleanExcerpt, image: imgUrl, category, source };
-      });
-    };
-
-    if (dataNews.status === 'ok') combined = [...combined, ...parseItems(dataNews.items, 'Telefe Noticias', 'NOTICIAS LOCALES')];
-    if (dataSports.status === 'ok') combined = [...combined, ...parseItems(dataSports.items, 'Cadena 3', 'DEPORTES')];
-    
-    // Shuffle to mix news and sports
-    return combined.sort(() => Math.random() - 0.5);
+    const res = await fetch('/api/news');
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data;
+    }
   } catch (error) {
-    console.error("Failed to fetch news:", error);
+    console.error("Failed to fetch news from internal API:", error);
   }
 
   return [
@@ -60,7 +28,8 @@ const fetchNews = async (): Promise<NewsItem[]> => {
       category: 'LOCALES',
       title: 'Nuevas obras de pavimentación en el ingreso a la planta',
       excerpt: 'Se ha completado el 80% de las obras de asfaltado en el acceso principal, mejorando los tiempos de logística de los camiones.',
-      image: 'https://images.unsplash.com/photo-1541888086225-ee5933d3bb7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80'
+      image: '/news-fallback.svg',
+      source: 'Planta AMG0'
     }
   ];
 };
@@ -147,11 +116,13 @@ export const AutoExpandNews = () => {
             <div className="w-[40%] lg:w-[45%] h-full relative shrink-0 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img 
-                src={news.image} 
+                src={news.image || '/news-fallback.svg'} 
                 alt={news.title}
                 className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1541888086225-ee5933d3bb7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80';
+                  const target = e.currentTarget;
+                  target.onerror = null; // Detiene cualquier bucle de reintento
+                  target.src = '/news-fallback.svg';
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-r from-[#0f172a]/90 via-[#0f172a]/20 to-transparent" />
